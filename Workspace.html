@@ -1190,6 +1190,16 @@ body:not(.sticky-headings) .note-sticky-heading{display:none!important}
 #selection-toolbar .format-menu-panel.outlined-options button:hover{border-color:var(--border-elevated)}
 #selection-toolbar .format-menu-panel button svg{width:14px;height:14px}
 #selection-toolbar .format-toolbar-row button[aria-expanded=true]{background:var(--hover)}
+#selection-toolbar :is(.format-toolbar-row,.format-menu-panel) button[aria-pressed=true]{background:var(--select);box-shadow:inset 0 0 0 1px var(--border-elevated)}
+#selection-toolbar :is(.format-toolbar-row,.format-menu-panel) button[aria-pressed=mixed]{background:var(--hover);box-shadow:inset 0 -2px var(--muted)}
+#selection-toolbar .highlight-trigger[data-active-color]{color:var(--active-highlight)}
+.cal-shift-dialog{width:min(570px,calc(100vw - 32px))}
+.cal-shift-list{display:grid;gap:2px;max-height:42vh;overflow:auto;margin:8px 0}
+.cal-shift-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);margin:0!important}
+.cal-shift-row:hover{background:var(--hover)}
+.cal-shift-row span{overflow-wrap:anywhere}.cal-shift-row small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.cal-shift-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:12px}
+.cal-shift-controls button{border:1px solid var(--line)}.cal-shift-summary{font-size:12px;color:var(--muted);min-height:1.5em}
 @media print{.note-sticky-heading,.checklist-filter-toggle{display:none!important}.editor>.checklist-task-hidden{display:block!important}.editor>.checklist-task-hidden.checklist-filter-anchor>.md-task-line{display:inline!important}.editor mark[data-highlight]{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
 </style></head><body>
 <div id="app">
@@ -2312,15 +2322,15 @@ function prepareNoteHighlightEdit(spans,range,text){
  const before=left&&split?'</mark>':'',after=(left&&!split?'</mark>':'')+(right?noteHighlightOpen(right.color):'');
  return {from,to,text:before+text+after,caret:from+before.length+text.length};
 }
-function paintNoteHighlightPieces(pieces,from,to,color){
+function paintNoteHighlightPieces(pieces,from,to,color,script=false){
  let at=0,result='',selectionFrom=null,selectionTo=null,changed=false;
  function append(text,tint,selected){
   if(!text)return;
-  const open=tint?noteHighlightOpen(tint):'';
+  const open=tint?(script?'<'+tint+'>':noteHighlightOpen(tint)):'';
   if(selected&&selectionFrom===null)selectionFrom=result.length+open.length;
   result+=open+text;
   if(selected)selectionTo=result.length;
-  if(tint)result+='</mark>';
+  if(tint)result+=script?'</'+tint+'>':'</mark>';
  }
  for(const piece of pieces){
   const start=at,end=start+piece.text.length;at=end;
@@ -2377,6 +2387,69 @@ function noteListConversion(source,range,ordered){
  const remap=point=>{let delta=0;for(const e of prefixes){if(point<e.start)break;if(point<=e.start+e.before)return e.start+delta+e.after;delta+=e.after-e.before;}return point+delta;};
  return {from:start,to:end,text,selection:{from:remap(range.from),to:remap(range.to)}};
 }
+// Work on visible text only: the caller supplies source-aligned pieces, so
+// changing case never changes Markdown delimiters, URLs, or equations.
+function noteCaseTransform(pieces,mode){
+ let word=true,sentence=true;const result=[];
+ for(const piece of pieces){let text='';if(piece.breakBefore){word=true;sentence=true;}
+  for(const ch of piece.text){const letter=/\p{L}/u.test(ch),wordChar=/[\p{L}\p{N}\p{M}]/u.test(ch);
+   if(mode==='upper')text+=ch.toLocaleUpperCase();else if(mode==='lower')text+=ch.toLocaleLowerCase();
+   else if(mode==='title')text+=word&&letter?ch.toLocaleUpperCase():ch.toLocaleLowerCase();
+   else text+=sentence&&letter?ch.toLocaleUpperCase():ch.toLocaleLowerCase();
+   if(letter)sentence=false;else if(/[.!?]/.test(ch))sentence=true;
+   if(wordChar)word=false;else if(!/[’']/.test(ch))word=true;
+  }result.push({...piece,text});
+ }return result;
+}
+function noteSelectedTextNodes(range,root,editable=false){
+ const scope=range.commonAncestorContainer||root,walker=document.createTreeWalker(scope,NodeFilter.SHOW_TEXT),nodes=[];
+ let node=scope.nodeType===3?scope:walker.nextNode();
+ for(;node;node=walker.nextNode()){
+  const parent=node.parentElement;if(!node.length||!range.intersectsNode(node)||parent.closest('[data-md-preview],.md-marker,.md-math-source,.md-wikilink-source,.media'))continue;
+  if(editable&&(parent.closest('.md-code,code,.md-math,.md-displayMath,.md-wikilink,.md-escape,.md-table,.md-definition')||parent.closest('a')&&!parent.closest('a')?.parentElement?.matches('.md-inline')))continue;
+  const from=node===range.startContainer?range.startOffset:0,to=node===range.endContainer?range.endOffset:node.length;
+  if(from<to)nodes.push({node,from,to,text:node.nodeValue.slice(from,to)});
+ }return nodes;
+}
+function selectionFormatStates(nodes){
+ const visible=nodes.filter(piece=>piece.text.trim()),selectors={bold:'strong,b',italic:'em,i',strikeThrough:'del,s,strike',inlineCode:'code',superscript:'sup',subscript:'sub',highlight:'mark[data-highlight]'};
+ const states={};for(const [key,selector] of Object.entries(selectors)){const count=visible.filter(piece=>piece.node.parentElement.closest(selector)).length;states[key]=!count?'false':count===visible.length?'true':'mixed';}
+ const colors=new Set(visible.map(piece=>piece.node.parentElement.closest('mark[data-highlight]')?.dataset.highlight||''));states.color=colors.size===1?[...colors][0]:'';
+ const lists=visible.map(piece=>{const line=piece.node.parentElement.closest('.md-list-line');return !line||line.matches('.md-task-line')?'':/^\d+[.)]$/.test(line.dataset.bullet)?'number':'bullet';});
+ for(const kind of ['number','bullet']){const count=lists.filter(value=>value===kind).length;states[kind]=!count?'false':count===lists.length?'true':'mixed';}
+ const count=lists.filter(Boolean).length;states.list=!count?'false':count===lists.length?'true':'mixed';return states;
+}
+function renumberEditedNoteLists(before,source,selection,change){
+ if(before===source||!/^([ \t]*)\d+[.)][ \t]/m.test(source))return {source,selection};
+ const marker=/^([ \t]*)([-+*]|\d+[.)])(?=[ \t])/;
+ const oldStart=change.start===0?0:before.lastIndexOf('\n',change.start-1)+1,newStart=change.start===0?0:source.lastIndexOf('\n',change.start-1)+1;
+ const affected=(value,start,end)=>{const newline=value.indexOf('\n',end);return value.slice(start,newline<0?value.length:newline).split('\n').map(line=>line.match(marker)?.[0]||(!line.trim()?'blank':'text:'+line.match(/^[ \t]*/)[0]));};
+ if(JSON.stringify(affected(before,oldStart,change.start+change.removed.length))===JSON.stringify(affected(source,newStart,change.start+change.inserted.length)))return {source,selection};
+ const from=newStart,to=change.start+change.inserted.length,fences=literalCodeBlocks(source);let fence=0,math=null,at=0,group=[],edits=[],blank=0;
+ function flush(){
+  if(group.length&&group.some(row=>row.start<=to+1&&row.end>=from-1)){
+   const levels=[];
+   for(const row of group){const depth=row.match[1].replace(/\t/g,'    ').length,ordered=/^\d/.test(row.match[2]);
+    while(levels.length&&levels.at(-1).depth>depth)levels.pop();
+    if(!levels.length||levels.at(-1).depth!==depth)levels.push({depth,next:1,ordered});
+    const level=levels.at(-1);if(level.ordered!==ordered){level.ordered=ordered;level.next=1;}
+    if(ordered){const text=String(level.next++)+row.match[2].at(-1);if(text!==row.match[2])edits.push({start:row.start+row.match[1].length,end:row.start+row.match[0].length,text});}
+   }
+  }group=[];blank=0;
+ }
+ for(const line of source.split('\n')){const start=at,end=start+line.length;at=end+1;while(fence<fences.length&&fences[fence].end<start)fence++;
+  if(fences[fence]&&fences[fence].start<=start&&start<=fences[fence].end){flush();continue;}
+  const trimmed=line.trim();if(math){if(trimmed.endsWith(math))math=null;flush();continue;}
+  if(trimmed.startsWith('$$')||trimmed.startsWith('\\[')){const close=trimmed.startsWith('$$')?'$$':'\\]';if(!trimmed.slice(2).includes(close))math=close;flush();continue;}
+  const match=marker.exec(line);if(match){if(blank>1||blank&&group.length&&match[1]===group[0].match[1]&&/^1[.)]$/.test(match[2]))flush();blank=0;group.push({start,end,match});continue;}
+  if(!trimmed&&group.length){blank++;continue;}
+  if(trimmed&&group.length){const depth=line.match(/^[ \t]*/)[0].replace(/\t/g,'    ').length,base=group[0].match[1].replace(/\t/g,'    ').length;if(depth>base)continue;}
+  flush();
+ }flush();
+ if(!edits.length)return {source,selection};
+ let next='',cursor=0;for(const edit of edits){next+=source.slice(cursor,edit.start)+edit.text;cursor=edit.end;}next+=source.slice(cursor);
+ return {source:next,selection:{from:mapNotePositionThroughEdits(selection.from,edits),to:mapNotePositionThroughEdits(selection.to,edits)}};
+}
 const sourceParser=new marked.Marked({gfm:true,breaks:true,renderer:{
  paragraph:token=>sourceImageRowHTML(token),
  html:token=>/^<br\s*\/?\s*>$/i.test(token.text.trim())?'<br>':/^<\/?(?:u|sup|sub|mark)>$/i.test(token.text.trim())?token.text:esc(token.text),
@@ -2387,6 +2460,7 @@ const sourceParser=new marked.Marked({gfm:true,breaks:true,renderer:{
  {name:'workspaceMargin',level:'block',start:s=>s.search(/^[ \t]*>[ \t]*\[!margin\](?:[ \t]|$)/im),tokenizer(s){const m=/^[ \t]*>[ \t]*\[!margin\](?:[ \t]+|$)([^\n]*)(?:\n|$)/i.exec(s);if(m)return {type:'workspaceMargin',raw:m[0],tokens:this.lexer.inlineTokens(m[1])};},childTokens:['tokens'],renderer(t){return '<blockquote data-margin-note="true"><small>Margin note</small><br>'+this.parser.parseInline(t.tokens)+'</blockquote>\n';}},
  {name:'workspaceCallout',level:'block',start(s){return s.search(/^[ \t]*>[ \t]*\[!callout\](?:[ \t]|$)/im);},tokenizer(s){if(!/^[ \t]*>/.test(s))return;const callout=readCallout(s);if(!callout)return;return {type:'workspaceCallout',raw:callout.raw,titleTokens:this.lexer.inlineTokens(callout.title),tokens:this.lexer.blockTokens(callout.body),title:callout.title};},childTokens:['titleTokens','tokens'],renderer(t){return '<details class="workspace-callout" data-workspace-callout="true"'+(t.title?'':' data-callout-untitled="true"')+' open><summary>'+this.parser.parseInline(t.titleTokens)+'</summary><div class="callout-content">'+this.parser.parse(t.tokens)+'</div></details>\n';}},
  {name:'sourceUnderline',level:'inline',start:s=>s.indexOf('<u>'),tokenizer(s){const m=/^<u>([\s\S]*?)<\/u>/.exec(s);if(m)return {type:'sourceUnderline',raw:m[0],tokens:this.lexer.inlineTokens(m[1])};},renderer(t){return '<u>'+this.parser.parseInline(t.tokens)+'</u>';}},
+ {name:'sourceScript',level:'inline',start:s=>s.search(/<(?:sup|sub)>/),tokenizer(s){const m=/^<(sup|sub)>([^\n]*?)<\/\1>/.exec(s);if(m)return {type:'sourceScript',raw:m[0],tag:m[1],tokens:this.lexer.inlineTokens(m[2])};},childTokens:['tokens'],renderer(t){return '<'+t.tag+'>'+this.parser.parseInline(t.tokens)+'</'+t.tag+'>';}},
  {name:'sourceHighlight',level:'inline',start:s=>s.indexOf('<mark data-highlight="'),tokenizer(s){const m=/^(<mark data-highlight="(#[0-9A-F]{6})">)([^\n]*?)<\/mark>/.exec(s);if(m&&validNoteHighlight(m[2]))return {type:'sourceHighlight',raw:m[0],open:m[1],color:m[2],tokens:this.lexer.inlineTokens(m[3])};},childTokens:['tokens'],renderer(t){return '<mark data-highlight="'+t.color+'" style="'+noteHighlightStyle(t.color)+'">'+this.parser.parseInline(t.tokens)+'</mark>';}},
  {name:'wikiLink',level:'inline',start:s=>s.indexOf('[['),tokenizer(s){const m=/^\[\[([^\[\]\n]+)\]\]/.exec(s);if(m&&m[1].trim())return {type:'wikiLink',raw:m[0],text:m[1].trim()};},renderer:t=>sourceWikiHTML(t.text)},
  {name:'displayMath',level:'block',start(s){const p=['$$','\\['].map(x=>s.indexOf(x)).filter(x=>x>=0);return p.length?Math.min(...p):-1;},tokenizer(s){const m=/^[ \t]*(?:\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\])(?:[ \t]*\n|$)/.exec(s);if(m){const dollar=m[1]!==undefined;return {type:'displayMath',raw:m[0],text:(m[1]??m[2]).trim(),open:dollar?'$$':'\\[',close:dollar?'$$':'\\]'};}},renderer:t=>sourceMathHTML(t.text,true,false)},
@@ -2677,6 +2751,7 @@ function inlineSource(e) {
   const decorate = e => e.map(e => {
     const t = e.raw;
     if(e.type==="sourceUnderline")return '<u class="md-inline">'+marker("<u>")+decorate(e.tokens)+marker("</u>")+"</u>";
+    if(e.type==='sourceScript')return '<'+e.tag+' class="md-inline md-script">'+marker('<'+e.tag+'>')+decorate(e.tokens)+marker('</'+e.tag+'>')+'</'+e.tag+'>';
     if(e.type==='sourceHighlight')return '<mark class="md-inline md-highlight" data-highlight="'+e.color+'" style="'+noteHighlightStyle(e.color)+'">'+marker(e.open)+decorate(e.tokens)+marker('</mark>')+'</mark>';
     if (["strong", "em", "del"].includes(e.type)) {
       const o = "em" === e.type || "del" === e.type && !t.startsWith("~~") ? 1 : 2;
@@ -3688,6 +3763,7 @@ function recordEditorFrame(e, t = editorFrame(), o = !1) {
 function applyEditorSource(e, t, o = "action", editHint = null) {
   if(readOnly||disposed)return;
   const literal=protectLiteralCodeChange(editorSource,e,t,editHint);e=literal.source;t=literal.cursor;
+  if(e!==editorSource){const numbered=renumberEditedNoteLists(editorSource,e,t,textDifference(editorSource,e));e=numbered.source;t=numbered.selection;}
   sourceHistoryPull();
   const n = Date.now(),
     a = editorSource;
@@ -3907,8 +3983,8 @@ function growMarkdownTable(block, axis) {
  let caretFrame=0;
  function revealCaret(){if(caretFrame)return;caretFrame=requestAnimationFrame(()=>{caretFrame=0;if(disposed||suppressCaretReveal||document.activeElement!==root)return;const s=getSelection();if(!s.rangeCount||!root.contains(s.anchorNode))return;const range=s.getRangeAt(0).cloneRange();range.collapse(false);let r=range.getBoundingClientRect();if(!r.height){const block=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('[data-md-block]');r=block?.getBoundingClientRect()||r;}const viewport=root.closest('.document-scroll,.scratchpad-scroll');if(!viewport||!r.height)return;const bounds=viewport.getBoundingClientRect();if(r.bottom>bounds.bottom-28)viewport.scrollTop+=r.bottom-bounds.bottom+28;else if(r.top<bounds.top+12)viewport.scrollTop-=bounds.top+12-r.top;});}
  function rememberRange(){const s=getSelection();if(editorComposition||document.activeElement?.matches('input[data-task-pos],.checklist-filter-toggle')||!root.contains(s.anchorNode)||!root.contains(s.focusNode))return {...editorCursor};const next=editorSelection();if(next.from!==editorCursor.from||next.to!==editorCursor.to){editorLastKind='';historyState.kind='';}editorCursor=next;sourceSavedRange={...next};activateEditorBlocks(next);return {...next};}
- function highlightSelection(color,selection=sourceSavedRange||editorSelection()){
-  if(readOnly||disposed||!selection||selection.from>=selection.to||color&&!validNoteHighlight(color))return false;
+ function highlightSelection(color,selection=sourceSavedRange||editorSelection(),script=false){
+  if(readOnly||disposed||!selection||selection.from>=selection.to||color&&!(script?['sup','sub'].includes(color):validNoteHighlight(color)))return false;
   const edits=[];
   for(let index=editorBlockAt(selection.from);index<=editorBlockAt(selection.to);index++){
    const block=editorBlocks[index],el=root.children[index];
@@ -3918,8 +3994,9 @@ function growMarkdownTable(block, axis) {
    function visit(node,tint=''){
     if(node.nodeType===3){if(node.nodeValue)pieces.push({text:node.nodeValue,kind:/^<\/?[a-z][^>]*>$/i.test(node.nodeValue)?'syntax':'text',color:tint});return;}
     if(node.nodeType!==1||node.hasAttribute('data-md-preview')||node.hasAttribute('data-md-placeholder'))return;
-    if(node.matches('mark.md-highlight')&&validNoteHighlight(node.dataset.highlight)){
-     for(const child of node.childNodes){if(child.nodeType===1&&child.matches('.md-marker'))pieces.push({text:editorTextOf(child),kind:'highlight-marker'});else visit(child,node.dataset.highlight);}return;
+    if(script?node.matches('sup.md-script,sub.md-script'):node.matches('mark.md-highlight')&&validNoteHighlight(node.dataset.highlight)){
+     const value=script?node.tagName.toLowerCase():node.dataset.highlight;
+     for(const child of node.childNodes){if(child.nodeType===1&&child.matches('.md-marker'))pieces.push({text:editorTextOf(child),kind:'highlight-marker'});else visit(child,value);}return;
     }
     if(node.matches('.md-marker,.md-image-inline,.md-math,.md-wikilink')){pieces.push({text:editorTextOf(node),kind:'syntax'});return;}
     if(node.matches('code.md-inline,.md-escape')){
@@ -3933,7 +4010,7 @@ function growMarkdownTable(block, axis) {
    // Only rewrite when the DOM still maps exactly to the source, never guess
    // at delimiters or at hidden widgets when formatting a mixed selection.
    if(pieces.map(p=>p.text).join('')!==block.source)continue;
-   const painted=paintNoteHighlightPieces(pieces,from,to,color);if(painted)edits.push({start:block.start,end:block.start+block.source.length,...painted});
+   const painted=paintNoteHighlightPieces(pieces,from,to,color,script);if(painted)edits.push({start:block.start,end:block.start+block.source.length,...painted});
   }
   if(!edits.length)return false;
   let cursor=0,next='',first=null,last=null;
@@ -3943,6 +4020,19 @@ function growMarkdownTable(block, axis) {
   const previous=suppressCaretReveal;suppressCaretReveal=true;cancelAnimationFrame(caretFrame);caretFrame=0;
   try{applyEditorSource(next,{from:first,to:last});}finally{suppressCaretReveal=previous;if(scroll){scroll.scrollTop=top;scroll.scrollLeft=left;}}
   return true;
+ }
+ function changeSelectionCase(mode){
+  if(readOnly||disposed)return false;
+  const selection=getSelection();if(!selection.rangeCount||selection.isCollapsed||!root.contains(selection.anchorNode)||!root.contains(selection.focusNode))return false;
+  const range=editorSelection(),pieces=[];let previousBlock=null;
+  for(const item of noteSelectedTextNodes(selection.getRangeAt(0),root,true)){
+   const start=editorOffset(item.node,item.from),end=editorOffset(item.node,item.to),block=item.node.parentElement.closest('[data-md-block]');
+   if(start<range.from||end>range.to||editorSource.slice(start,end)!==item.text)continue;
+   pieces.push({start,end,text:item.text,breakBefore:previousBlock!==null&&previousBlock!==block});previousBlock=block;
+  }
+  const edits=noteCaseTransform(pieces,mode).filter((piece,i)=>piece.text!==pieces[i].text),nextRange={from:mapNotePositionThroughEdits(range.from,edits),to:mapNotePositionThroughEdits(range.to,edits)};
+  if(!edits.length)return false;let next='',cursor=0;for(const edit of edits){next+=editorSource.slice(cursor,edit.start)+edit.text;cursor=edit.end;}next+=editorSource.slice(cursor);
+  applyEditorSource(next,nextRange);return true;
  }
  function checkTask(input){
   if(readOnly||disposed||!root.contains(input))return;
@@ -4324,6 +4414,8 @@ function growMarkdownTable(block, axis) {
  function command(value){if(readOnly)return;sourceHistoryPull();const aliases={strikeThrough:'strike',inlineCode:'inline-code',insertUnorderedList:'list'};value=aliases[value]||value;if(value==='wikilink'){restoreRange();const selection=editorSelection(),text=editorSource.slice(selection.from,selection.to);replaceEditorText('[['+text+']]',selection);setEditorSelection({from:selection.from+2,to:selection.to+2});updateSlash();return;}if(value==='insertOrderedList'||value==='list'){restoreRange();const edit=noteListConversion(editorSource,editorSelection(),value==='insertOrderedList');applyEditorSource(editorSource.slice(0,edit.from)+edit.text+editorSource.slice(edit.to),edit.selection);return;}
   if(value==='callout'){insertCallout();return;}
   if(value==='margin-note'){api.addMarginNote();return;}
+  if(value.startsWith('case-')){restoreRange();changeSelectionCase(value.slice(5));return;}
+  if(value==='superscript'||value==='subscript'){restoreRange();const s=getSelection();if(!s.rangeCount||s.isCollapsed)return;const states=selectionFormatStates(noteSelectedTextNodes(s.getRangeAt(0),root));highlightSelection(states[value]==='true'?'':value==='superscript'?'sup':'sub',editorSelection(),true);return;}
   if(value==='p'){restoreRange();applyHeading(0,editorSelection());return;}
   if(value==='removeFormat'){restoreRange();const s=editorSelection(),start=s.from===s.to?editorSource.lastIndexOf('\n',Math.max(0,s.from-1))+1:s.from,end=s.from===s.to?(editorSource.indexOf('\n',s.to)<0?editorSource.length:editorSource.indexOf('\n',s.to)):s.to;const d=document.createElement('div');d.innerHTML=renderSourceHTML(editorSource.slice(start,end),model);const text=d.textContent;replaceEditorText(text,{from:start,to:end});if(s.from!==s.to&&text.length)setEditorSelection({from:Math.max(0,editorCursor.to-text.length),to:editorCursor.to});return;}
   if(value==='underline'){restoreRange();const s=editorSelection();replaceEditorText('<u>'+editorSource.slice(s.from,s.to)+'</u>',s);setEditorSelection({from:s.from+3,to:s.to+3});return;}format(value);}
@@ -8910,8 +9002,8 @@ function wireHighlightToolbar(){
  trigger.onclick=()=>{
   if(!palette.hidden){closeHighlightPalette();}else{
    closeSelectionToolbarMenu();
-   rememberSelection();const selection=getSelection(),a=selection.anchorNode,b=selection.focusNode,mark=(a?.nodeType===1?a:a?.parentElement)?.closest('mark[data-highlight]');
-   const selected=mark&&mark.contains(b)?mark.dataset.highlight:'';for(const swatch of $$('button',palette))swatch.setAttribute('aria-pressed',String(swatch.dataset.color===selected));
+   rememberSelection();const selection=getSelection(),editor=editorForNode(selection.anchorNode),states=editor&&selection.rangeCount?selectionFormatStates(noteSelectedTextNodes(selection.getRangeAt(0),editor)):null;
+   const selected=states?.color||'';for(const swatch of $$('button',palette))swatch.setAttribute('aria-pressed',String(swatch.dataset.color===selected&&(selected!==''||states?.highlight==='false')));
    palette.hidden=false;trigger.setAttribute('aria-expanded','true');
   }
   const selection=getSelection();if(selection.rangeCount)positionSelectionToolbar(selection.getRangeAt(0));
@@ -8921,23 +9013,30 @@ function wireHighlightToolbar(){
  const row=document.createElement('div');row.className='format-toolbar-row';row.append(...bar.children,trigger,actions);bar.append(row,palette,panel);
  for(const button of $$('#format-heading,#format-list,#format-selection-actions',row)){button.removeAttribute('aria-haspopup');button.setAttribute('aria-expanded','false');button.setAttribute('aria-controls',panel.id);}
 }
-function openSelectionToolbarMenu(trigger){
+function openSelectionToolbarMenu(trigger,section=''){
  const selection=getSelection(),root=editorForNode(selection?.anchorNode),engine=root&&sourceEditors.get(root);
  if(!engine||engine.isReadOnly()||selection.isCollapsed||!root.contains(selection.focusNode))return;
- if(selectionToolbarMenu?.trigger===trigger){closeSelectionToolbarMenu();positionSelectionToolbar(selection.getRangeAt(0));return;}
+ if(selectionToolbarMenu?.trigger===trigger&&selectionToolbarMenu.section===section){closeSelectionToolbarMenu();positionSelectionToolbar(selection.getRangeAt(0));return;}
  closeSelectionToolbarPanels();rememberSelection();const range={...engine.selection()},source=engine.source(),w=workspace();
  const run=action=>()=>{closeSelectionToolbarMenu();if(workspace()!==w||!engine.root.isConnected||engine.isReadOnly()||engine.source()!==source){showSelectionToolbar();return;}engine.setSelection(range);action();showSelectionToolbar();};
- let items;
- if(trigger.id==='format-list')items=[{text:'Bulleted list',run:run(()=>engine.toolbarCommand('insertUnorderedList'))},{text:'Numbered list',run:run(()=>engine.toolbarCommand('insertOrderedList'))}];
- else if(trigger.id==='format-heading')items=[{text:'Text',run:run(()=>engine.toolbarCommand('p'))},...[1,2,3,4,5,6].map(n=>({text:'Heading '+n,run:run(()=>engine.toolbarCommand('h'+n))}))];
+ let items;const states=selectionFormatStates(noteSelectedTextNodes(selection.getRangeAt(0),root));
+ if(trigger.id==='format-list')items=[{text:'Bulleted list',pressed:states.bullet,run:run(()=>engine.toolbarCommand('insertUnorderedList'))},{text:'Numbered list',pressed:states.number,run:run(()=>engine.toolbarCommand('insertOrderedList'))}];
+ else if(trigger.id==='format-heading')items=[{text:'Text',run:run(()=>engine.toolbarCommand('p'))},...[1,2,3,4,5,6].map(n=>({text:'Heading '+n,run:run(()=>engine.toolbarCommand('h'+n))})),{text:'Superscript',pressed:states.superscript,run:run(()=>engine.toolbarCommand('superscript'))},{text:'Subscript',pressed:states.subscript,run:run(()=>engine.toolbarCommand('subscript'))}];
+ else if(section==='case')items=[{text:'Back',icon:'left',run:run(()=>openSelectionToolbarMenu(trigger))},...['upper','lower','title','sentence'].map((mode,i)=>({text:['UPPERCASE','lowercase','Title Case','Sentence case'][i],run:run(()=>engine.toolbarCommand('case-'+mode))}))];
  else{
-  const extraction=engine.extractionSelection();items=[...(selectionExtractionOwner(engine,w)&&extraction.from<extraction.to?[{text:'Extract selection to note…',icon:'note',run:run(()=>extractNoteSelection(engine,extraction))}]:[]),{text:'Add margin note…',shortcut:'Ctrl/⌘ Alt M',run:run(()=>engine.addMarginNote())}];
+  const extraction=engine.extractionSelection();items=[...(selectionExtractionOwner(engine,w)&&extraction.from<extraction.to?[{text:'Extract selection to note…',icon:'note',run:run(()=>extractNoteSelection(engine,extraction))}]:[]),{text:'Add margin note…',shortcut:'Ctrl/⌘ Alt M',run:run(()=>engine.addMarginNote())},{text:'Change case…',run:run(()=>openSelectionToolbarMenu(trigger,'case'))}];
  }
  const panel=$('#format-menu-panel');panel.classList.toggle('outlined-options',trigger.id==='format-list'||trigger.id==='format-selection-actions');panel.setAttribute('aria-label',trigger.getAttribute('aria-label')||'Formatting options');
- for(const item of items){const button=document.createElement('button');button.type='button';if(item.icon)button.innerHTML=icon(item.icon);button.append(document.createTextNode(item.text));if(item.shortcut)button.title=item.shortcut;button.onclick=item.run;panel.append(button);}
- selectionToolbarMenu={trigger,engine,source,range};trigger.setAttribute('aria-expanded','true');panel.hidden=false;positionSelectionToolbar(selection.getRangeAt(0));
+ for(const item of items){const button=document.createElement('button');button.type='button';if(item.icon)button.innerHTML=icon(item.icon);button.append(document.createTextNode(item.text));if(item.shortcut)button.title=item.shortcut;if(item.pressed!==undefined)button.setAttribute('aria-pressed',item.pressed);button.onclick=item.run;panel.append(button);}
+ selectionToolbarMenu={trigger,engine,source,range,section};trigger.setAttribute('aria-expanded','true');panel.hidden=false;positionSelectionToolbar(selection.getRangeAt(0));
 }
-function showSelectionToolbar(){const s=getSelection();if(!s?.rangeCount||!s.anchorNode||s.isCollapsed||$('#dialog').open||!$('#menu').hidden){hideSelectionToolbar();return;}const math=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('.md-math,.md-displayMath');if(math&&math.contains(s.focusNode)){hideSelectionToolbar();return;}const e=editorForNode(s.anchorNode),engine=e&&sourceEditors.get(e);if(!engine||engine.isReadOnly()||!e.contains(s.focusNode)||s.anchorNode?.parentElement?.closest('.media')){hideSelectionToolbar();return;}rememberSelection();if(selectionToolbarMenu){const current=engine.selection(),menu=selectionToolbarMenu;if(menu.engine!==engine||menu.source!==engine.source()||menu.range.from!==current.from||menu.range.to!==current.to)closeSelectionToolbarMenu();}const block=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('[data-md-block]');const headingMatch=block?.tagName.match(/^H([1-6])$/);if($('#format-heading'))$('#format-heading span').textContent=headingMatch?'H'+headingMatch[1]:'Text';const bar=$('#selection-toolbar');bar.hidden=false;positionSelectionToolbar(s.getRangeAt(0));}
+function paintSelectionFormatting(root,range){
+ const states=selectionFormatStates(noteSelectedTextNodes(range,root)),bar=$('#selection-toolbar');
+ for(const key of ['bold','italic','strikeThrough','inlineCode'])$('[data-format="'+key+'"]',bar)?.setAttribute('aria-pressed',states[key]);
+ $('#format-list')?.setAttribute('aria-pressed',states.list);
+ const highlight=$('.highlight-trigger',bar);if(highlight){highlight.setAttribute('aria-pressed',states.highlight);if(validNoteHighlight(states.color)){highlight.dataset.activeColor=states.color;highlight.style.setProperty('--active-highlight',states.color);}else{delete highlight.dataset.activeColor;highlight.style.removeProperty('--active-highlight');}}
+}
+function showSelectionToolbar(){const s=getSelection();if(!s?.rangeCount||!s.anchorNode||s.isCollapsed||$('#dialog').open||!$('#menu').hidden){hideSelectionToolbar();return;}const math=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('.md-math,.md-displayMath');if(math&&math.contains(s.focusNode)){hideSelectionToolbar();return;}const e=editorForNode(s.anchorNode),engine=e&&sourceEditors.get(e);if(!engine||engine.isReadOnly()||!e.contains(s.focusNode)||s.anchorNode?.parentElement?.closest('.media')){hideSelectionToolbar();return;}rememberSelection();if(selectionToolbarMenu){const current=engine.selection(),menu=selectionToolbarMenu;if(menu.engine!==engine||menu.source!==engine.source()||menu.range.from!==current.from||menu.range.to!==current.to)closeSelectionToolbarMenu();}const block=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('[data-md-block]');const headingMatch=block?.tagName.match(/^H([1-6])$/);if($('#format-heading'))$('#format-heading span').textContent=headingMatch?'H'+headingMatch[1]:'Text';const bar=$('#selection-toolbar');paintSelectionFormatting(e,s.getRangeAt(0));bar.hidden=false;positionSelectionToolbar(s.getRangeAt(0));}
 function format(command){closeSelectionToolbarPanels();if(command==='math')return mathDialog();if(command==='link')return linkDialog();rememberSelection();const saved=savedEditorAnchor;if(!saved?.engine.root.isConnected||saved.engine.isReadOnly())return;saved.engine.setSelection(saved.selection);saved.engine.toolbarCommand(command);showSelectionToolbar();}
 function editorKey(event,editor){sourceEditors.get(editor)?.onKey(event);}
 const slashCommands=[['Heading 1','h1','Large heading'],['Heading 2','h2','Section heading'],['Heading 3','h3','Small heading'],['Bullet list','insertUnorderedList','Unordered list'],['Numbered list','insertOrderedList','Ordered list'],['Checklist','checklist','Tasks you can tick off'],['Quote','quote','A block quotation'],['Callout','callout','Collapsible gray block · optional title'],['Margin note','margin-note','Annotate a block · Ctrl/⌘ Alt M'],['Code block','code','Plain code, preserved spacing'],['Equation','math','KaTeX, inline or display'],['Diagram','diagram','Mermaid, rendered offline'],['Table','table','Rows and columns'],['Image / PDF','media','Upload or paste files'],['Link','link','A URL or another note'],['Note link','wikilink','Obsidian-style [[note]] link'],['Divider','divider','A horizontal line']];
@@ -9129,9 +9228,44 @@ function renameNote(n){
  if(isCanvasFile(n)){askName('Rename canvas',n.title,title=>renameCanvasTitle(n,title));return;}
  askName('Rename note',n.title,title=>{renameLinkedNote(n,title);render();});
 }
-function folderMenu(f,e){if(f.deleted){const ids=selectedFolders.has(f.id)?[...selectedFolders]:[f.id];menuAt([{label:ids.length>1?ids.length+' folders':f.name},{text:ids.length>1?'Restore folders':'Restore folder',icon:'folder',run:()=>restoreWorkspaceFolders(ids)},{text:'Delete permanently…',icon:'trash',danger:true,run:()=>deleteForever([],ids)}],e);return;}menuAt([{label:f.name},favoriteAction('folder',f),...(!searchMode&&!trashMode?[{text:'Focus this folder',icon:'folderOpen',run:()=>focusSidebarFolder(f)}]:[]),{text:'New note here',icon:'edit',run:()=>{activeFolder=f.id;setSidebarFolderClosed(f,false);newNote(f.id);}},{text:'New subfolder…',icon:'folderPlus',run:()=>createFolder(f.id)},{text:'Rename…',icon:'edit',run:()=>renameFolder(f)},{text:'Change icon…',icon:'image',run:()=>fileIconDialog([f])},{text:'Move folder…',icon:'folder',run:()=>moveDialog([],f.id)},{text:'Export folder…',icon:'download',run:()=>exportDialog(notesInFolder(f.id).map(n=>n.id))},'-',{text:'Delete folder…',icon:'trash',danger:true,run:()=>trashWorkspaceFolders(selectedFolders.has(f.id)?[...selectedFolders]:[f.id])}],e);}
+function folderMenu(f,e){if(f.deleted){const ids=selectedFolders.has(f.id)?[...selectedFolders]:[f.id];menuAt([{label:ids.length>1?ids.length+' folders':f.name},{text:ids.length>1?'Restore folders':'Restore folder',icon:'folder',run:()=>restoreWorkspaceFolders(ids)},{text:'Delete permanently…',icon:'trash',danger:true,run:()=>deleteForever([],ids)}],e);return;}menuAt([{label:f.name},favoriteAction('folder',f),...(!searchMode&&!trashMode?[{text:'Focus this folder',icon:'folderOpen',run:()=>focusSidebarFolder(f)}]:[]),{text:'New note here',icon:'edit',run:()=>{activeFolder=f.id;setSidebarFolderClosed(f,false);newNote(f.id);}},{text:'New subfolder…',icon:'folderPlus',run:()=>createFolder(f.id)},{text:'Rename…',icon:'edit',run:()=>renameFolder(f)},{text:'Change icon…',icon:'image',run:()=>fileIconDialog([f])},{text:'Move folder…',icon:'folder',run:()=>moveDialog([],f.id)},{text:'Duplicate folder',icon:'copy',run:()=>void duplicateWorkspaceFolder(f)},{text:'Export folder…',icon:'download',run:()=>exportDialog(notesInFolder(f.id).map(n=>n.id))},'-',{text:'Delete folder…',icon:'trash',danger:true,run:()=>trashWorkspaceFolders(selectedFolders.has(f.id)?[...selectedFolders]:[f.id])}],e);}
 function descendants(id){const all=new Set([id]);let size;do{size=all.size;workspace().folders.forEach(f=>{if(all.has(f.parent))all.add(f.id);});}while(size!==all.size);return all;}
 function notesInFolder(id){const set=descendants(id);return visibleNotes().filter(n=>set.has(n.folder));}
+function duplicateFolderName(name,siblings){const used=new Set(siblings.map(wikiKey)),base=(name||'Folder').slice(0,480)+' copy';let next=base,index=2;while(used.has(wikiKey(next)))next=base+' '+index++;return next;}
+function duplicateFolderWikiSource(source,owner,noteIds,paths){
+ for(const span of wikiScan(source).spans.reverse()){
+  const parsed=parseWikiLink(span.raw),target=resolveWikiLink(span.raw,owner).note;if(!parsed.file||!target)continue;
+  const id=noteIds[target.id]||target.id,label=parsed.alias??wikiDisplay(span.raw);
+  const path=paths.get(target.id)||wikiNotePath(target),replacement=parsed.fragment?'[['+path+parsed.suffix+'|'+label+']]':'['+label.replace(/[\\\[\]]/g,'\\$&')+'](note:'+id+')';
+  source=source.slice(0,span.start)+replacement+source.slice(span.end);
+ }return source;
+}
+async function duplicateWorkspaceFolder(folder){
+ const w=workspace();if(workspaceBatchDepth||!w.folders.includes(folder)||folderInTrash(folder.id,w))return;
+ const ids=descendants(folder.id),folders=w.folders.filter(f=>ids.has(f.id)&&!folderInTrash(f.id,w)),notes=w.notes.filter(n=>ids.has(n.folder)&&!n.deleted&&!folderInTrash(n.folder,w));
+ workspaceBatchDepth++;
+ try{
+  await wsLoadMany(notes,w);if(workspace()!==w||!w.folders.includes(folder)||folderInTrash(folder.id,w)||notes.some(n=>!w.notes.includes(n)||n.deleted||!ids.has(n.folder))||folders.some(f=>!w.folders.includes(f)||folderInTrash(f.id,w)))throw Error('The folder changed. Try again.');
+  flushPendingNoteHTML();const refs=captureWikiReferences(),folderIds=Object.fromEntries(folders.map(f=>[f.id,uid()])),noteIds=Object.fromEntries(notes.map(n=>[n.id,uid()])),assetIds=Object.create(null),assets={},now=Date.now();
+  const rootName=duplicateFolderName(folder.name,w.folders.filter(f=>(f.parent||null)===(folder.parent||null)&&!f.deleted).map(f=>f.name));
+  const copies=folders.map(f=>({...structuredClone(f),id:folderIds[f.id],name:f===folder?rootName:f.name,parent:f===folder?folder.parent:folderIds[f.parent],closed:f===folder?false:!!f.closed,deleted:0,trashBatch:undefined}));
+  const folderById=new Map(folders.map(f=>[f.id,f])),paths=new Map();
+  for(const n of notes){const parts=[wikiFileName(n)],seen=new Set();let id=n.folder;while(id&&folderById.has(id)&&!seen.has(id)){seen.add(id);const f=folderById.get(id);parts.unshift(f===folder?rootName:f.name);if(f===folder)break;id=f.parent;}const parent=wikiFolderPath(folder.parent);paths.set(n.id,[parent,...parts].filter(Boolean).join('/'));}
+  for(const n of notes)for(const id of noteAssetIds(n)){if(assetIds[id])continue;const asset=w.assets[id];if(!asset)throw Error('An attachment is missing. Nothing was duplicated.');const next=uid();assetIds[id]=next;assets[next]={...structuredClone({...asset,data:undefined}),id:next,data:asset.data};}
+  const noteCopies=notes.map(n=>{
+   const copy={...structuredClone(n),id:noteIds[n.id],folder:folderIds[n.folder],created:now,updated:now,deleted:0,trashBatch:undefined};
+   if(isCanvasFile(n)){
+    const canvas=structuredClone(n);for(const item of canvas.canvas.items)if(item.type==='text')item.text=duplicateFolderWikiSource(item.text,n,noteIds,paths);
+    copy.canvas=importCanvasModel(canvas,assetIds,assets,noteIds);
+   }else if(isMediaFile(n)){copy.asset=assetIds[n.asset]||n.asset;}
+   else {const source=duplicateFolderWikiSource(sourceForNote(n),n,noteIds,paths);Object.assign(copy,remapSourceMetadata({...n,source},assetIds,noteIds));copy.html=remapHTML(n.html,assetIds,noteIds);copy.sourceHtmlHash=sourceHash(copy.html);}
+   return copy;
+  });
+  for(const [id,asset]of Object.entries(assets))w.assets[id]=asset;w.folders.push(...copies);w.notes.push(...noteCopies);invalidateWorkspaceIndex(w);
+  for(const n of noteCopies){if(!isMediaFile(n)&&!isCanvasFile(n))setSourceNote(n,n.source);wsTrackNote(w,n);}
+  maintainWikiReferences(refs);changed();renderTree();flash('Duplicated '+rootName+'.');
+ }catch(error){flash(error.message||'Could not duplicate the folder.');}finally{workspaceBatchDepth--;wsScheduleEvict();}
+}
 const recentMoveFolders=new WeakMap();
 function moveDialog(ids,folderId=null){
  const w=workspace(),invalid=folderId?descendants(folderId):new Set(),movingFolder=folderId?w.folders.find(f=>f.id===folderId):null;
@@ -11118,7 +11252,7 @@ function calendarTaskActions(w,key,task,event){
  const open=fn=>()=>{const current=workspace()===w&&calendarTaskFor(w,key,id);if(!current){flash('This task has changed.');return;}hideTodayAgenda();if(anchor?.isConnected&&!anchor.closest('#today-agenda'))anchor.focus({preventScroll:true});fn(current);};
  const scheduled=validCalendarTimeBlock(live.timeBlock),locked=live.timeBlock?.locked===true;
  const swap=scheduled&&!locked&&calendarSwapCandidates(w,key,id).length>0;
- menuAt([{label:live.text},{text:'Color…',icon:'edit',run:()=>calendarColorMenu(w,key,live,anchor)},{text:scheduled?'Edit time block…':'Schedule…',icon:'calendar',run:open(t=>calendarScheduleDialog(w,key,t))},...(swap?[{text:'Swap time with…',run:open(t=>calendarSwapDialog(w,key,t))}]:[]),...(scheduled?[{text:locked?'Unlock time block':'Lock against dragging',run:open(t=>setCalendarBlockLock(w,key,t,!locked))}]:[]),{text:live.rule?'Move this occurrence…':'Move…',run:open(t=>calendarMoveDialog(w,key,t))},{text:live.rule?'Edit repeating series…':'Repeat…',run:open(t=>t.rule?repeatEditScope(w,key,t):addCalendarRepeat(w,key,t))},taskReminderMenuItem(w,key,live),...(!live.rule?[{text:'Move to Inbox',run:open(t=>moveTaskToInbox(w,key,t))}]:[]),'-',...(live.rule?[{text:'Stop repeating from this date…',run:open(t=>stopCalendarRepeat(w,t,key))}]:[]),{text:live.rule?'Delete this occurrence':'Delete task',icon:'trash',danger:true,run:open(t=>t.rule?skipRepeatOccurrence(w,key,t):deleteCalendarTask(w,key,t))}],event);
+ menuAt([{label:live.text},{text:'Color…',icon:'edit',run:()=>calendarColorMenu(w,key,live,anchor)},{text:scheduled?'Edit time block…':'Schedule…',icon:'calendar',run:open(t=>calendarScheduleDialog(w,key,t))},...(swap?[{text:'Swap time with…',run:open(t=>calendarSwapDialog(w,key,t))}]:[]),...(scheduled?[{text:'Shift time blocks…',run:open(t=>calendarShiftDialog(w,key,false,calendarBlockId(t)))},{text:locked?'Unlock time block':'Lock against dragging',run:open(t=>setCalendarBlockLock(w,key,t,!locked))}]:[]),{text:live.rule?'Move this occurrence…':'Move…',run:open(t=>calendarMoveDialog(w,key,t))},{text:live.rule?'Edit repeating series…':'Repeat…',run:open(t=>t.rule?repeatEditScope(w,key,t):addCalendarRepeat(w,key,t))},taskReminderMenuItem(w,key,live),...(!live.rule?[{text:'Move to Inbox',run:open(t=>moveTaskToInbox(w,key,t))}]:[]),'-',...(live.rule?[{text:'Stop repeating from this date…',run:open(t=>stopCalendarRepeat(w,t,key))}]:[]),{text:live.rule?'Delete this occurrence':'Delete task',icon:'trash',danger:true,run:open(t=>t.rule?skipRepeatOccurrence(w,key,t):deleteCalendarTask(w,key,t))}],event);
 }
 function setCalendarBlockLock(w,key,task,locked){
  if(w!==workspace())return false;
@@ -11359,6 +11493,50 @@ function calendarManageCommit(w,plan){
  $('#toast').append(calButton('Undo',()=>calendarManageUndoLast(w),'cal-move-undo'));
  toastTimer=setTimeout(()=>{$('#toast').hidden=true;},10000);return true;
 }
+function calendarShiftPlan(w,selection,delta,previewOnly=false){
+ if(!Number.isSafeInteger(delta)||delta===0||Math.abs(delta)>=1440)return {error:'Enter a nonzero shift in minutes (less than one day).'};
+ const before=previewOnly?null:calendarManageSnapshot(w),draft=previewOnly?w:{...w,calendar:structuredClone(before)},groups=new Map(),rows=[],seen=new Set();
+ for(const selected of selection){
+  const task=calendarTaskFor(draft,selected.key,selected.id),range=task?.timeBlock;
+  if(!validCalendarTimeBlock(range)||range.locked||selected.range&&(range.start!==selected.range.start||range.end!==selected.range.end))return {error:'A selected time block changed or is locked. Reopen the planner.'};
+  const id=calendarManageRowId(selected.key,task);if(seen.has(id))continue;seen.add(id);
+  const next={...range,start:range.start+delta,end:range.end+delta};
+  if(!validCalendarTimeBlock(next))return {error:'“'+task.text+'” would extend outside its day. Choose a smaller shift.'};
+  const row={key:selected.key,task,id,next};rows.push(row);if(!groups.has(row.key))groups.set(row.key,[]);groups.get(row.key).push(row);
+ }
+ if(!rows.length)return {error:'Select at least one unlocked time block.'};
+ let conflicts=0;
+ for(const [key,group] of groups){
+  const tasks=previewOnly?[]:calendarTasks(key,draft),all=calendarTimeTasks(key,draft),selectedIds=new Set(group.map(row=>calendarBlockId(row.task)));
+  for(const row of group){
+   const id=calendarBlockId(row.task);for(const other of all){if(!selectedIds.has(calendarBlockId(other))&&validCalendarTimeBlock(other.timeBlock)&&row.next.start<other.timeBlock.end&&other.timeBlock.start<row.next.end)conflicts++;}
+   if(!previewOnly&&!row.task.rule){const target=tasks.find(task=>task.id===row.task.id);if(!target)return {error:'A task no longer exists.'};target.timeBlock={...row.next};}
+  }
+  if(previewOnly)continue;
+  if(group.some(row=>!row.task.rule))writeCalendarDay(key,tasks,draft);
+  for(const row of group.filter(row=>row.task.rule)){const day=draft.calendar.days[key]??={markdown:'',taskIds:[]};(day.blocks??={})[calendarBlockId(row.task)]={...row.next};day.updated=Date.now();}
+ }
+ return {before,after:draft.calendar,rows,action:'shift',conflicts};
+}
+function calendarShiftDialog(w,date,week=false,initialId=null){
+ if(w!==workspace())return;
+ const initial=calendarDate(date),start=week?calendarWeekStart(date):initial,dates=[];
+ for(let i=0;i<(week?7:1);i++){const day=new Date(start);day.setDate(day.getDate()+i);dates.push(calendarKey(day));}
+ const rows=dates.flatMap(key=>calendarTimeTasks(key,w).filter(task=>validCalendarTimeBlock(task.timeBlock)).sort((a,b)=>a.timeBlock.start-b.timeBlock.start).map(task=>({key,id:calendarBlockId(task),range:{...task.timeBlock},task}))),picked=new Set(initialId?rows.filter(row=>row.key===date&&row.id===initialId&&!row.range.locked):[]);
+ const d=showDialog('Shift time blocks','<p class="quiet-context">Select blocks to move together. Their durations, dates and relative spacing stay unchanged.</p><div class="dialog-row"><label for="cal-shift-minutes">Shift by minutes</label><input type="number" id="cal-shift-minutes" name="delta" value="15" min="-1439" max="1439" step="1" required></div><div class="cal-shift-controls"><span class="cal-shift-count"></span><button type="button" data-shift-all>Select all unlocked</button><button type="button" data-shift-none>Clear</button></div><div class="cal-shift-list"></div><p class="cal-shift-summary" role="status" aria-live="polite"></p>',data=>{
+  if(w!==workspace())return;const plan=calendarShiftPlan(w,[...picked],Number(data.get('delta')));
+  if(plan.error){$('.cal-shift-summary',d).textContent=plan.error;return;}
+  if(!calendarManageCommit(w,plan)){flash('The calendar changed. Try again.');return;}d.close();
+ },'Shift blocks','cal-shift-dialog');
+ const list=$('.cal-shift-list',d),delta=$('#cal-shift-minutes',d),summary=$('.cal-shift-summary',d),submit=$('button[type=submit]',d),entries=new Map();
+ function preview(){
+  const amount=Number(delta.value),plan=calendarShiftPlan(w,[...picked],amount,true);$('.cal-shift-count',d).textContent=picked.size+' selected';summary.textContent=plan.error||((plan.conflicts?plan.conflicts+' overlap'+(plan.conflicts===1?'':'s')+' with unselected blocks. ':'')+'Shift '+(amount>0?'+':'')+amount+' min · '+plan.rows.length+' blocks.');submit.disabled=!!plan.error;
+  for(const [row,entry] of entries){entry.check.checked=picked.has(row);const next={start:row.range.start+amount,end:row.range.end+amount};entry.detail.textContent=(week?calendarDate(row.key).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})+' · ':'')+calendarTimeSpan(row.range)+(row.range.locked?' · Locked':picked.has(row)&&validCalendarTimeBlock(next)?' → '+calendarTimeLabel(next.start)+'–'+calendarTimeLabel(next.end):'');}
+ }
+ for(const row of rows){const label=calElement('label','cal-shift-row'),check=document.createElement('input'),title=calElement('span','',row.task.text),detail=calElement('small');check.type='checkbox';check.disabled=!!row.range.locked;title.append(detail);label.append(check,title);list.append(label);entries.set(row,{check,detail});check.onchange=()=>{if(check.checked)picked.add(row);else picked.delete(row);preview();};}
+ if(!rows.length)list.append(calElement('p','quiet-context','No scheduled blocks for this period.'));
+ $('[data-shift-all]',d).onclick=()=>{for(const row of rows)if(!row.range.locked)picked.add(row);preview();};$('[data-shift-none]',d).onclick=()=>{picked.clear();preview();};delta.oninput=preview;preview();
+}
 function calendarManageTimeLabel(rule){
  const s=rule.schedule;
  if(s?.mode==='same'&&validCalendarTimeBlock(s.range))return calendarTimeSpan(s.range);
@@ -11547,7 +11725,7 @@ function mountCalendar(paneEl){
   if(state.mode==='day'){updateDay=mountCalendarDay(w,state.date,body,paneEl,openDate);cleanup=updateDay.cleanup;}else if(state.mode==='week')cleanup=mountCalendarTimeline(w,state,body,paneEl);else if(state.mode==='year')paintYear();else paintMonth();
   if(!navigate){body.scrollTop=top;body.scrollLeft=left;if(id)body.querySelector('[data-calendar-task-id="'+CSS.escape(id)+'"] textarea,[data-block-id="'+CSS.escape(id)+'"]')?.focus({preventScroll:true});}else if(state.mode!=='week')body.scrollTop=0;
  }
- shell.onclick=e=>{const mode=e.target.closest('[data-cal-mode]')?.dataset.calMode,nav=e.target.closest('[data-cal-nav]')?.dataset.calNav;if(e.target.closest('.cal-planning-options'))menuAt([{text:'Calendar settings',icon:'settings',run:calendarSettingsDialog},{text:'Manage calendar…',icon:'calendar',run:()=>calendarManagementDialog(w)}],e.target.closest('.cal-planning-options'));else if(mode){state.mode=mode;if(mode==='day')state.date=calendarKey();paint(true);}else if(nav){state.date=moveCalendarDate(state.date,state.mode,+nav);paint(true);}};syncInboxButton(inboxButton,w);paint(true);
+ shell.onclick=e=>{const mode=e.target.closest('[data-cal-mode]')?.dataset.calMode,nav=e.target.closest('[data-cal-nav]')?.dataset.calNav;if(e.target.closest('.cal-planning-options'))menuAt([{text:'Calendar settings',icon:'settings',run:calendarSettingsDialog},...(['day','week'].includes(state.mode)?[{text:'Shift time blocks…',run:()=>calendarShiftDialog(w,state.date,state.mode==='week')}]:[]),{text:'Manage calendar…',icon:'calendar',run:()=>calendarManagementDialog(w)}],e.target.closest('.cal-planning-options'));else if(mode){state.mode=mode;if(mode==='day')state.date=calendarKey();paint(true);}else if(nav){state.date=moveCalendarDate(state.date,state.mode,+nav);paint(true);}};syncInboxButton(inboxButton,w);paint(true);
  return (key)=>{syncInboxButton(inboxButton,w);const keys=Array.isArray(key)?key:key?[key]:null;if(state.mode!==lastMode||state.date!==lastDate){paint(true);return;}if(updateDay){updateDay(keys);return;}if(state.mode==='week'){if(keys&&cleanup?.update?.(keys))return;paint();return;}for(const date of keys||dates.keys()){const button=dates.get(date);if(button)updateDate(button,date);}};
 }
 
