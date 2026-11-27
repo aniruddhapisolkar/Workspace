@@ -2527,7 +2527,7 @@ function htmlToSource(html,n){
 }
 function sourceForNote(n){const cached=sourceReadCache.get(n);if(cached&&cached.source===n.source&&cached.html===n.html&&cached.hash===n.sourceHtmlHash)return n.source;if(typeof n.source!=='string'||n.sourceHtmlHash!==sourceHash(n.html)){n.source=htmlToSource(n.html,n);n.sourceHtmlHash=sourceHash(n.html);}const literal=normalizeLiteralCodeFences(n.source).source;if(literal!==n.source){n.source=literal;n.html=renderSourceHTML(literal,n);n.sourceHtmlHash=sourceHash(n.html);}rememberSourceNote(n);return n.source;}
 
-function setSourceNote(n,source){n.source=normalizeLiteralCodeFences(source).source;n.html=renderSourceHTML(n.source,n);n.sourceHtmlHash=sourceHash(n.html);n.updated=Date.now();rememberSourceNote(n);}
+function setSourceNote(n,source){const next=normalizeLiteralCodeFences(source).source;rebaseTrashLinks(n,n.source,next);n.source=next;n.html=renderSourceHTML(n.source,n);n.sourceHtmlHash=sourceHash(n.html);n.updated=Date.now();rememberSourceNote(n);}
 function activeSourceEditor(){return sourceEditors.get($('.pane.focused:not(:has(>.embedded-file-reader)) .editor'));}
 function mountSourceEditor(root,n,index,onChange){const editor=createSourceEditor(root,n,index,onChange);sourceEditors.set(root,editor);editor.disposeImageRows=wireImageRowInteractions(root,editor);return editor;}
 function smartUrlMarkdown(selected,candidate){
@@ -3994,7 +3994,7 @@ function growMarkdownTable(block, axis) {
  let htmlRenderTimer=0,lastRenderedSource=null,lastRenderedStamp='';
  function flushHTML(){clearTimeout(htmlRenderTimer);htmlRenderTimer=0;if(pendingSourceHTML.get(model)!==flushHTML)return;pendingSourceHTML.delete(model);if(model.source!==editorSource)return;const stamp=mediaStamp();if(lastRenderedSource===editorSource&&lastRenderedStamp===stamp)return;model.html=renderSourceHTML(editorSource,model);model.sourceHtmlHash=sourceHash(model.html);rememberSourceNote(model);lastRenderedSource=editorSource;lastRenderedStamp=stamp;scheduleStatus();}
  function scheduleHTML(){clearTimeout(htmlRenderTimer);pendingSourceHTML.set(model,flushHTML);htmlRenderTimer=setTimeout(flushHTML,editorSource.length>150000?400:160);}
- function syncEditor(){if(disposed)return;model.source=editorSource;model.updated=Date.now();rememberSourceNote(model);lastMediaStamp=mediaStamp();sourceHistoryPush();scheduleHTML();saveModel(model);for(const other of $$('.editor')){const engine=sourceEditors.get(other);if(other!==root&&engine?.model===model)engine.receive(editorSource);}if(typeof scheduleDocumentTools==='function')scheduleDocumentTools(root); }
+ function syncEditor(){if(disposed)return;rebaseTrashLinks(model,model.source,editorSource);model.source=editorSource;model.updated=Date.now();rememberSourceNote(model);lastMediaStamp=mediaStamp();sourceHistoryPush();scheduleHTML();saveModel(model);for(const other of $$('.editor')){const engine=sourceEditors.get(other);if(other!==root&&engine?.model===model)engine.receive(editorSource);}if(typeof scheduleDocumentTools==='function')scheduleDocumentTools(root); }
  let caretFrame=0;
  function revealCaret(){if(caretFrame)return;caretFrame=requestAnimationFrame(()=>{caretFrame=0;if(disposed||suppressCaretReveal||document.activeElement!==root)return;const s=getSelection();if(!s.rangeCount||!root.contains(s.anchorNode))return;const range=s.getRangeAt(0).cloneRange();range.collapse(false);let r=range.getBoundingClientRect();if(!r.height){const block=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('[data-md-block]');r=block?.getBoundingClientRect()||r;}const viewport=root.closest('.document-scroll,.scratchpad-scroll');if(!viewport||!r.height)return;const bounds=viewport.getBoundingClientRect();if(r.bottom>bounds.bottom-28)viewport.scrollTop+=r.bottom-bounds.bottom+28;else if(r.top<bounds.top+12)viewport.scrollTop-=bounds.top+12-r.top;});}
  function rememberRange(){const s=getSelection();if(editorComposition||document.activeElement?.matches('input[data-task-pos],.checklist-filter-toggle')||!root.contains(s.anchorNode)||!root.contains(s.focusNode))return {...editorCursor};const next=editorSelection();if(next.from!==editorCursor.from||next.to!==editorCursor.to){editorLastKind='';historyState.kind='';}editorCursor=next;sourceSavedRange={...next};activateEditorBlocks(next);return {...next};}
@@ -6370,16 +6370,23 @@ function trashTreeEntries(notes,w=workspace()){
  if(needle)for(const folder of w.folders)if(folder.deleted&&folder.name.toLowerCase().includes(needle))matched.add(rootFor(folder.id));
  return [...folders.filter(folder=>!needle||matched.has(folder.id)).map(folder=>({kind:'folder',item:folder,depth:0})),...notes.filter(note=>!folderInTrash(note.folder,w)).map(note=>({kind:'note',item:note,depth:0}))];
 }
-function restoreWorkspaceFolders(ids){
+function restoreWorkspaceFolders(ids,reviewed=false){
  const w=workspace(),byId=workspaceIndex(w).foldersById,requested=new Set();for(const id of ids){let next=id;const seen=new Set();while(next&&!seen.has(next)){seen.add(next);const folder=byId.get(next);if(!folder)break;if(folder.deleted)requested.add(next);next=folder.parent;}}
  const folders=new Set(),notes=new Set();
  for(const id of requested){const root=byId.get(id),subtree=descendants(id);for(const folder of w.folders)if(subtree.has(folder.id)&&folder.deleted&&(!root.trashBatch||folder.trashBatch===root.trashBatch))folders.add(folder.id);for(const note of w.notes)if(subtree.has(note.folder)&&note.deleted&&(!root.trashBatch||note.trashBatch===root.trashBatch))notes.add(note.id);}
+ if(!folders.size)return;if(!reviewed)return confirmTrashRestore(w,notes,()=>restoreWorkspaceFolders(ids,true));
  for(const id of folders){const folder=byId.get(id);folder.deleted=0;delete folder.trashBatch;}for(const id of notes){const note=noteBy(id);note.deleted=0;delete note.trashBatch;}
- if(!folders.size)return;deletionHistories.delete(w.id);clearSelections();changed();render();flash(folders.size===1?'1 folder restored with its contents.':folders.size+' folders restored with their contents.');
+ invalidateWorkspaceIndex(w);restoreTrashLinks(w,notes);deletionHistories.delete(w.id);clearSelections();changed();render();flash(folders.size===1?'1 folder restored with its contents.':folders.size+' folders restored with their contents.');
 }
-function restoreTrashedNotes(ids){
- let count=0,blocked=false;for(const id of ids){const note=noteBy(id);if(!note?.deleted)continue;if(folderInTrash(note.folder)){blocked=true;continue;}note.deleted=0;delete note.trashBatch;count++;}
- if(count){deletionHistories.delete(workspace().id);clearSelections();changed();render();}if(blocked)flash('Restore the containing folder first.');else if(count)flash(count+' file'+(count===1?'':'s')+' restored.');
+function restoreTrashedNotes(ids,reviewed=false){
+ const w=workspace(),notes=new Set();let blocked=false;for(const id of ids){const note=noteBy(id);if(!note?.deleted)continue;if(folderInTrash(note.folder)){blocked=true;continue;}notes.add(id);}
+ if(notes.size&&!reviewed)return confirmTrashRestore(w,notes,()=>restoreTrashedNotes(ids,true));
+ for(const id of notes){const note=noteBy(id);note.deleted=0;delete note.trashBatch;}
+ if(notes.size){invalidateWorkspaceIndex(w);restoreTrashLinks(w,notes);deletionHistories.delete(w.id);clearSelections();changed();render();}if(blocked)flash('Restore the containing folder first.');else if(notes.size)flash(notes.size+' file'+(notes.size===1?'':'s')+' restored.');
+}
+function confirmTrashRestore(w,ids,commit){
+ const count=trashLinkRows(w).filter(row=>ids.has(row.target)).length;if(!count){commit();return;}
+ confirmAction('Restore from Trash?',count+' removed link'+(count===1?' will':'s will')+' be restored with the file(s), in the original notes. Other edits will be kept.',()=>{if(quietTrashChecks.has(w))return;quietTrashChecks.add(w);void loadTrashLinkOwners(w,ids).then(()=>{if(workspace()===w){flushPendingNoteHTML();commit();}}).catch(error=>flash(error.message,true)).finally(()=>quietTrashChecks.delete(w));},'Restore');
 }
 function restoreTrashSelection(){const ids=[...selected];if(selectedFolders.size)restoreWorkspaceFolders([...selectedFolders]);if(ids.length)restoreTrashedNotes(ids);}
 function emptyTrash(){deleteForever(workspace().notes.filter(note=>note.deleted).map(note=>note.id),workspace().folders.filter(folder=>folder.deleted).map(folder=>folder.id));}
@@ -6393,13 +6400,13 @@ function selectWorkspaceFolder(folder,event){
  if(!folder.deleted)activeFolder=folder.id;if(!activeSidebarFocus())changed(null,false);renderTree();
  if(workspaceMotion.matches&&sidebarFolderClosed(folder)!==wasClosed)$('.folder-row[data-folder="'+CSS.escape(folder.id)+'"]')?.classList.add('folder-chevron-moving');
 }
-function trashWorkspaceFolders(ids,reviewed=false){
+function trashWorkspaceFolders(ids,reviewed=false,owners=[]){
  const w=workspace(),roots=ids.filter(id=>w.folders.some(folder=>folder.id===id&&!folder.deleted));if(!roots.length)return;
  const all=new Set();for(const id of roots)for(const child of descendants(id))all.add(child);const folders=w.folders.filter(folder=>all.has(folder.id)&&!folder.deleted),notes=w.notes.filter(note=>all.has(note.folder)&&!note.deleted),stamp=Date.now(),batch=uid();
- if(!reviewed)return checkNoteTrash(w,notes,{folder:true,commit:()=>trashWorkspaceFolders(roots,true)});
+ if(!reviewed)return checkNoteTrash(w,notes,{folder:true,commit:(_,owners)=>trashWorkspaceFolders(roots,true,owners)});
  const frame={kind:'folders',roots,batch,stamp,folderRows:folders.map(folder=>({id:folder.id,deleted:folder.deleted||0,trashBatch:folder.trashBatch})),notes:notes.map(note=>({id:note.id,deleted:note.deleted||0,trashBatch:note.trashBatch})),panes:structuredClone(w.panes),currentPane};
- let history=deletionHistories.get(w.id);if(!history){history={undo:[],redo:[]};deletionHistories.set(w.id,history);}for(const folder of folders){folder.deleted=stamp;folder.trashBatch=batch;}for(const note of notes){note.deleted=stamp;note.trashBatch=batch;}
- const targets=new Set(notes.map(note=>note.id));for(const p of w.panes){normalizePaneTabs(p);p.tabs=p.tabs.filter(id=>!targets.has(id));if(targets.has(p.active))p.active=p.tabs[0]||null;}collapseEmptyPanes();frame.afterPanes=structuredClone(w.panes);frame.afterPane=currentPane;history.undo.push(frame);if(history.undo.length>50)history.undo.shift();history.redo=[];if(all.has(activeFolder))activeFolder=null;clearSelections();changed();render();flash(folders.length+' folder'+(folders.length===1?'':'s')+' moved to Trash. Ctrl/⌘ Z to undo.');
+ let history=deletionHistories.get(w.id);if(!history){history={undo:[],redo:[]};deletionHistories.set(w.id,history);}detachTrashLinks(w,new Set(notes.map(note=>note.id)),owners);for(const folder of folders){folder.deleted=stamp;folder.trashBatch=batch;}for(const note of notes){note.deleted=stamp;note.trashBatch=batch;}
+ const targets=new Set(notes.map(note=>note.id));for(const p of w.panes){normalizePaneTabs(p);p.tabs=p.tabs.filter(id=>!targets.has(id));if(targets.has(p.active))p.active=p.tabs[0]||null;}collapseEmptyPanes();frame.afterPanes=structuredClone(w.panes);frame.afterPane=currentPane;history.undo.push(frame);if(history.undo.length>50)history.undo.shift();history.redo=[];if(all.has(activeFolder))activeFolder=null;clearSelections();changed();render();$('#tree').focus({preventScroll:true});flash(folders.length+' folder'+(folders.length===1?'':'s')+' moved to Trash. Ctrl/⌘ Z to undo.');
 }
 function deleteWorkspaceSelection(){if(trashMode){deleteForever([...selected],[...selectedFolders]);return;}if(selectedFolders.size)trashWorkspaceFolders([...selectedFolders]);else if(selected.size)trashNotes([...selected]);}
 function deletePasswordFolders(ids){
@@ -6422,7 +6429,7 @@ async function init(){
   }
  }
  if(!storeState){const w=newWorkspace();storeState={format:'workspace-notes-app',version:1,active:w.id,workspaces:[w],settings:{theme:'dark',fontSize:16,narrow:false,sidebarWidth:240,sidebarHidden:innerWidth<560}};}
- try{const journal=JSON.parse(localStorage.getItem('workspace-notes-journal')||'null');if(journal){const w=storeState.workspaces.find(w=>w.id===journal.workspace),n=w?.notes.find(n=>n.id===journal.id);if(n&&journal.updated>n.updated&&(!isCanvasFile(n)||[...noteAssetIds(journal)].every(id=>Object.hasOwn(w.assets,id)))){Object.assign(n,journal);dirty=true;}}}catch{}
+ try{const journal=JSON.parse(localStorage.getItem('workspace-notes-journal')||'null');if(journal){const w=storeState.workspaces.find(w=>w.id===journal.workspace),n=w?.notes.find(n=>n.id===journal.id);if(n&&journal.updated>n.updated&&(!isCanvasFile(n)||[...noteAssetIds(journal)].every(id=>Object.hasOwn(w.assets,id)))){if(typeof journal.source==='string')rebaseTrashLinkPositions(trashLinkRows(w).filter(row=>row.owner===n.id),n.source,journal.source);Object.assign(n,journal);dirty=true;}}}catch{}
  storeState.settings={fontSize:16,narrow:false,sidebarWidth:240,sidebarHidden:innerWidth<560,...storeState.settings};
  if(Object.hasOwn(storeState.settings,'marginalia')){delete storeState.settings.marginalia;dirty=true;}
  if(!storeState.settings.editorialScale){if(storeState.settings.fontSize===18)storeState.settings.fontSize=16;storeState.settings.editorialScale=true;dirty=true;}
@@ -6445,6 +6452,9 @@ function sameNoteStamp(a,b){return !!a&&a.html===b.html&&a.source===b.source&&a.
 function writeRecoveryJournal(){
  clearTimeout(journalTimer);journalTimer=0;if(!pendingJournalNotes.size)return;
  const [n,wid]=[...pendingJournalNotes.entries()].at(-1);pendingJournalNotes.clear();
+ // A file's deletion flag, its removed links and the source changes commit
+ // together in IndexedDB. Never journal half of that transaction alone.
+ if(trashLinkJournalBlocked.has(n))return;
  try{if((n.html?.length||0)+(n.source?.length||0)<700000)localStorage.setItem('workspace-notes-journal',JSON.stringify({...n,workspace:wid}));}catch{}
 }
 function scheduleStatus(){if(!statusTimer)statusTimer=setTimeout(()=>{statusTimer=0;updateStatus();},80);}
@@ -9327,8 +9337,13 @@ function moveDialog(ids,folderId=null){
  search.oninput=paint;search.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const buttons=$$('button:not(:disabled)',list);(e.key==='ArrowDown'?buttons[0]:buttons.at(-1))?.focus();}else if(e.key==='Enter'){e.preventDefault();if(!search.value.trim())return;const buttons=$$('button:not(:disabled)',list);if(buttons.length===1)buttons[0].click();else buttons[0]?.focus();}};
  list.onkeydown=e=>{if(!['ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();const buttons=$$('button:not(:disabled)',list),index=buttons.indexOf(document.activeElement),next=index+(e.key==='ArrowDown'?1:-1);if(next<0)search.focus();else buttons[Math.min(buttons.length-1,next)]?.focus();};paint();
 }
-function trashNotes(ids,reviewed=false){const w=workspace(),notes=[...new Set(ids)].map(noteBy).filter(n=>n&&!n.deleted);if(!notes.length)return;if(!reviewed)return checkNoteTrash(w,notes);let history=deletionHistories.get(w.id);if(!history){history={undo:[],redo:[]};deletionHistories.set(w.id,history);}const frame={notes:notes.map(n=>({id:n.id,deleted:n.deleted||0,trashBatch:n.trashBatch})),panes:structuredClone(w.panes),folders:structuredClone(w.folders),currentPane};const targets=new Set(notes.map(n=>n.id));notes.forEach(n=>{n.deleted=Date.now();delete n.trashBatch;});clearSelections();w.panes.forEach(p=>{p.tabs=p.tabs.filter(id=>!targets.has(id));if(targets.has(p.active))p.active=p.tabs[0]||null;});collapseEmptyPanes();frame.afterPanes=structuredClone(w.panes);frame.afterPane=currentPane;history.undo.push(frame);if(history.undo.length>50)history.undo.shift();history.redo=[];changed();render();flash(notes.length===1?'Note moved to trash. Ctrl/⌘ Z to undo.':notes.length+' notes moved to trash. Ctrl/⌘ Z to undo.');}
+function trashNotes(ids,reviewed=false,owners=[]){const w=workspace(),notes=[...new Set(ids)].map(noteBy).filter(n=>n&&!n.deleted);if(!notes.length)return;if(!reviewed)return checkNoteTrash(w,notes);let history=deletionHistories.get(w.id);if(!history){history={undo:[],redo:[]};deletionHistories.set(w.id,history);}const frame={notes:notes.map(n=>({id:n.id,deleted:n.deleted||0,trashBatch:n.trashBatch})),panes:structuredClone(w.panes),folders:structuredClone(w.folders),currentPane};const targets=new Set(notes.map(n=>n.id));detachTrashLinks(w,targets,owners);notes.forEach(n=>{n.deleted=Date.now();delete n.trashBatch;});clearSelections();w.panes.forEach(p=>{p.tabs=p.tabs.filter(id=>!targets.has(id));if(targets.has(p.active))p.active=p.tabs[0]||null;});collapseEmptyPanes();frame.afterPanes=structuredClone(w.panes);frame.afterPane=currentPane;history.undo.push(frame);if(history.undo.length>50)history.undo.shift();history.redo=[];changed();render();$('#tree').focus({preventScroll:true});flash(notes.length===1?'Note moved to trash. Ctrl/⌘ Z to undo.':notes.length+' notes moved to trash. Ctrl/⌘ Z to undo.');}
 function undoNoteDeletion(redo=false){
+ const w=workspace(),history=deletionHistories.get(w.id),stack=redo?history?.redo:history?.undo;if(!stack?.length)return false;if(quietTrashChecks.has(w))return true;
+ const frame=stack.at(-1),ids=new Set(frame.notes.map(row=>row.id));if(redo&&frame.kind==='folders')for(const root of frame.roots)for(const n of w.notes)if(!n.deleted&&descendants(root).has(n.folder))ids.add(n.id);
+ quietTrashChecks.add(w);void (async()=>{try{flushPendingNoteHTML();const owners=redo?await prepareTrashLinkOwners(w,ids):(await loadTrashLinkOwners(w,ids),[]);if(workspace()===w&&deletionHistories.get(w.id)===history&&stack.at(-1)===frame)undoNoteDeletionPrepared(redo,owners);}catch(error){flash(error.message,true);}finally{quietTrashChecks.delete(w);}})();return true;
+}
+function undoNoteDeletionPrepared(redo=false,owners=[]){
  const w=workspace(),history=deletionHistories.get(w.id);if(!history)return false;const from=redo?history.redo:history.undo,to=redo?history.undo:history.redo;let frame,notes,folders;
  do{frame=from.pop();if(!frame)return false;notes=frame.notes.filter(row=>noteBy(row.id));folders=(frame.folderRows||[]).filter(row=>w.folders.some(folder=>folder.id===row.id));}while(!notes.length&&!folders.length);
  if(frame.kind==='folders'&&redo){
@@ -9337,9 +9352,10 @@ function undoNoteDeletion(redo=false){
   for(const note of w.notes)if(subtree.has(note.folder)&&!note.deleted&&!frame.notes.some(row=>row.id===note.id))frame.notes.push({id:note.id,deleted:0,trashBatch:note.trashBatch});
   notes=frame.notes.filter(row=>noteBy(row.id));folders=frame.folderRows.filter(row=>w.folders.some(folder=>folder.id===row.id));
  }
+ if(redo)detachTrashLinks(w,new Set(notes.map(row=>row.id)),owners);
  for(const row of notes){const note=noteBy(row.id);note.deleted=redo?(frame.stamp||Date.now()):row.deleted;const batch=redo&&frame.kind==='folders'?frame.batch:redo?null:row.trashBatch;if(batch)note.trashBatch=batch;else delete note.trashBatch;}
  for(const row of folders){const folder=w.folders.find(folder=>folder.id===row.id);folder.deleted=redo?frame.stamp:row.deleted;const batch=redo?frame.batch:row.trashBatch;if(batch)folder.trashBatch=batch;else delete folder.trashBatch;}
- w.panes=structuredClone(redo?frame.afterPanes:frame.panes);currentPane=redo?frame.afterPane:frame.currentPane;clearSelections();
+ if(!redo){invalidateWorkspaceIndex(w);restoreTrashLinks(w,new Set(notes.filter(row=>!row.deleted).map(row=>row.id)));}w.panes=structuredClone(redo?frame.afterPanes:frame.panes);currentPane=redo?frame.afterPane:frame.currentPane;clearSelections();
  if(!redo){if(frame.kind==='folders')for(const row of folders)selectedFolders.add(row.id);else notes.filter(row=>!noteBy(row.id).deleted).forEach(row=>selected.add(row.id));}
  if(activeFolder&&folderInTrash(activeFolder))activeFolder=null;anchorId=redo?null:notes[0]?.id||null;to.push(frame);changed();render();flash(frame.kind==='folders'?'Folders '+(redo?'moved to Trash.':'restored.'):notes.length+' file'+(notes.length===1?'':'s')+(redo?' moved to Trash.':' restored.'));return true;
 }
@@ -9347,7 +9363,8 @@ function isEditableTarget(target){return !!target?.closest?.('input,textarea,sel
 
 function deleteForever(ids,folderIds=[]){
  flushPendingNoteHTML();const w=workspace(),removedFolders=new Set();for(const id of folderIds)if(w.folders.some(folder=>folder.id===id&&folder.deleted))for(const child of descendants(id))removedFolders.add(child);const removed=new Set([...ids,...w.notes.filter(note=>removedFolders.has(note.folder)).map(note=>note.id)]);if(!removed.size&&!removedFolders.size)return;
- confirmAction('Delete permanently?',(removedFolders.size?removedFolders.size+' folder(s) and ':'')+removed.size+' file(s) will be removed permanently from this workspace.',()=>{
+ confirmAction('Delete permanently?',(removedFolders.size?removedFolders.size+' folder(s) and ':'')+removed.size+' file(s) and their removed links will be deleted permanently. This cannot be undone.',()=>{
+  purgeTrashLinks(w,removed);
   w.favorites=favoriteItems(w).filter(ref=>!(ref.kind==='folder'?removedFolders:removed).has(ref.id));
   for(const id of removed){sourceHistory.delete(w.id+':'+id);notePositions(w).delete(id);}
   dirtyResumeWorkspaces.add(w);flushResumePositions();deletionHistories.delete(w.id);w.notes=w.notes.filter(note=>!removed.has(note.id));w.folders=w.folders.filter(folder=>!removedFolders.has(folder.id));clearSelections();if(removedFolders.has(activeFolder))activeFolder=null;
@@ -9877,6 +9894,7 @@ function importCanvasFile(data,folderForPath){
 function importPortableWorkspace(data){const input=data.workspace;if(!input||!Array.isArray(input.notes)||!Array.isArray(input.folders))throw Error('This workspace file is incomplete.');if(new Set(input.notes.map(n=>n.id)).size!==input.notes.length||new Set(input.folders.map(f=>f.id)).size!==input.folders.length)throw Error('This workspace has duplicate identities.');const w={id:uid(),name:String(input.name||'Imported Workspace'),notes:[],folders:[],assets:{},panes:[],splitRatio:.5},fm={},nm={},am={};if(input.passwordManager)w.passwordManager=importPasswordManager(input.passwordManager);if(input.calendar)w.calendar=importCalendar(input.calendar);input.folders.forEach(f=>fm[f.id]=uid());input.notes.forEach(n=>nm[n.id]=uid());for(const [id,a]of Object.entries(input.assets||{})){if(!validateAsset(a))throw Error('This workspace contains an invalid attachment.');const next=uid();am[id]=next;w.assets[next]={...a,id:next};}for(const f of input.folders)w.folders.push({id:fm[f.id],name:String(f.name||'Untitled folder'),icon:validFileIcon(f.icon),parent:fm[f.parent]||null,closed:!!f.closed,deleted:+f.deleted||0,trashBatch:typeof f.trashBatch==='string'?f.trashBatch:undefined});for(const f of w.folders){const seen=new Set([f.id]);let p=f.parent;while(p){if(seen.has(p)){f.parent=null;break;}seen.add(p);p=w.folders.find(x=>x.id===p)?.parent;}}for(const n of input.notes){if(typeof n.html!=='string')throw Error('This workspace contains an invalid note.');const imported={id:nm[n.id],title:String(n.title||'New Note'),icon:validFileIcon(n.icon),html:remapHTML(n.html,am,nm),folder:fm[n.folder]||null,tags:Array.isArray(n.tags)?n.tags.map(String):[],created:+n.created||Date.now(),updated:+n.updated||Date.now(),deleted:+n.deleted||0,trashBatch:typeof n.trashBatch==='string'?n.trashBatch:undefined};Object.assign(imported,remapSourceMetadata(n,am,nm));importContentEdits(n,imported);if(isMediaFile(n)&&am[n.asset]){imported.type=n.type;imported.asset=am[n.asset];imported.viewer=n.viewer||{page:1,zoom:1,mode:'fit'};}if(isCanvasFile(n)){imported.type='canvas';imported.canvas=importCanvasModel(n,am,w.assets,nm);}if(typeof imported.source==='string')imported.sourceHtmlHash=sourceHash(imported.html);w.notes.push(imported);}
 
  if(typeof input.archiveFolder==='string'&&fm[input.archiveFolder])w.archiveFolder=fm[input.archiveFolder];
+ if(Array.isArray(input.trashLinks))w.trashLinks=input.trashLinks.flatMap(row=>typeof row?.text==='string'&&Number.isSafeInteger(row.at)&&row.at>=0&&Object.hasOwn(nm,row.owner)&&Object.hasOwn(nm,row.target)?[{owner:nm[row.owner],target:nm[row.target],at:row.at,text:row.text.replace(/(note:|#note-)([\w-]+)/gi,(all,prefix,id)=>Object.hasOwn(nm,id)?prefix+nm[id]:all)}]:[]);
  if(typeof input.wallpaper==='string'&&Object.hasOwn(am,input.wallpaper)){
   w.wallpaper=am[input.wallpaper];if(!workspaceWallpaper(w))delete w.wallpaper;
  }
@@ -11225,7 +11243,7 @@ saveBinaryState=async function(){
  for(const row of assetRows){persistedAssets.set(row.key,row.stamp);persistedAssetRefs.set(row.key,row.hash);}for(const k of assetRemovals){persistedAssets.delete(k);persistedAssetRefs.delete(k);}if(assetsChanged){persistedBlobKeys.clear();for(const h of usedHashes)persistedBlobKeys.add(h);for(const h of verifiedStoredAttachments)if(!usedHashes.has(h))verifiedStoredAttachments.delete(h);}
  for(const h of payloads.keys())verifiedStoredAttachments.add(h);
  for(const [key,e] of pendingNotes)if(wsDirtyNotes.get(key)===e)wsDirtyNotes.delete(key);for(const [key,e] of pendingAssets)if(wsDirtyAssets.get(key)===e)wsDirtyAssets.delete(key);
- wsDiskRevision=metadata.wsRevision;storeState.wsRevision=wsDiskRevision;storeState.storageVersion=4;savedGeneration=generation;if(generation===changeGeneration){dirty=false;pendingJournalNotes.clear();clearTimeout(journalTimer);journalTimer=0;try{localStorage.removeItem('workspace-notes-journal');}catch{}}
+ wsDiskRevision=metadata.wsRevision;storeState.wsRevision=wsDiskRevision;storeState.storageVersion=4;savedGeneration=generation;if(generation===changeGeneration){dirty=false;trashLinkJournalBlocked=new WeakSet();pendingJournalNotes.clear();clearTimeout(journalTimer);journalTimer=0;try{localStorage.removeItem('workspace-notes-journal');}catch{}}
  scheduleStatus();wsScheduleEvict();
 };
 const wsOriginalSaveNow=saveNow;saveNow=async function(){const result=await wsOriginalSaveNow();if(!result){wsStructural=true;if(wsConcurrent)flash('Workspace changed in another tab. Close the other tab and reload before editing.',true);}return result;};
@@ -11881,13 +11899,78 @@ function quietDirectLinks(source){
  marked.walkTokens(marked.lexer(source),t=>{if(t.type!=='link')return;const id=/^(?:note:|#note-)([\w-]+)$/i.exec(t.href)?.[1];if(id)ids.add(id);});
  return [...ids];
 }
+// Keep removed link tokens (not whole note snapshots) in workspace metadata.
+// Positions are in the remaining text and follow subsequent edits to the owner.
+function trashLinkRows(w){return Array.isArray(w.trashLinks)?w.trashLinks:[];}
+function rebaseTrashLinkPositions(rows,before,after){
+ if(!rows.length||before===after||typeof before!=='string')return;
+ let start=0,end=0;while(start<before.length&&start<after.length&&before[start]===after[start])start++;
+ while(end<before.length-start&&end<after.length-start&&before[before.length-1-end]===after[after.length-1-end])end++;
+ const oldEnd=before.length-end,newEnd=after.length-end;
+ for(const row of rows){if(row.at<=start)continue;if(row.at>=oldEnd){row.at+=newEnd-oldEnd;continue;}
+  const left=before.slice(Math.max(0,row.at-40),row.at),right=before.slice(row.at,row.at+40),context=left+right,at=after.indexOf(context);
+  row.at=context&&at>=0&&after.indexOf(context,at+1)<0?at+left.length:Math.min(newEnd,row.at);
+ }
+ // Equal positions retain their original order (including adjacent links).
+ rows.sort((a,b)=>a.at-b.at);
+}
+let writingTrashLinks=false,trashLinkJournalBlocked=new WeakSet();
+function rebaseTrashLinks(owner,before,after){if(writingTrashLinks||!storeState||owner.ephemeral)return;const w=workspace(),rows=trashLinkRows(w);if(rows.length)rebaseTrashLinkPositions(rows.filter(row=>row.owner===owner.id),before,after);}
+function trashDirectSpans(source,ids){
+ const matches=[...source.matchAll(/(?:note:|#note-)([\w-]+)/gi)].filter(m=>ids.has(m[1]));if(!matches.length)return [];
+ const prefix='note:trash-probe-'+uid()+'-',markers=new Map(),pieces=[];let cursor=0,length=0;
+ for(const m of matches){const before=source.slice(cursor,m.index),marker=prefix+markers.size;pieces.push(before,marker);length+=before.length;markers.set(marker,{target:m[1],start:m.index,end:m.index+m[0].length,probeStart:length,probeEnd:length+marker.length});length+=marker.length;cursor=m.index+m[0].length;}
+ pieces.push(source.slice(cursor));const probe=pieces.join(''),spans=[],refs=new Map();
+ function original(pos){let delta=0;for(const row of markers.values()){if(pos<row.probeStart)break;if(pos<=row.probeEnd)return pos===row.probeEnd?row.end:row.start;delta+=(row.end-row.start)-(row.probeEnd-row.probeStart);}return pos+delta;}
+ marked.walkTokens(marked.lexer(probe),token=>{const row=token.type==='link'&&markers.get(token.href);if(!row)return;const raw=token.raw,at=raw.indexOf(token.href);if(at<0){refs.set(raw,row.target);return;}const start=row.probeStart-at,end=start+raw.length;if(probe.slice(start,end)===raw)spans.push({start:original(start),end:original(end),target:row.target});});
+ // Reference-style links have their destination in a separate definition.
+ // Probe each occurrence through the lexer so literal examples stay untouched.
+ for(const [raw,target] of refs){let cursor=0;while((cursor=source.indexOf(raw,cursor))>=0){const start=cursor;cursor+=raw.length;if(/^[:([]/.test(source.slice(cursor)))continue;const marker=prefix+'ref-'+start;let linked=false;marked.walkTokens(marked.lexer(source.slice(0,start)+'[link]('+marker+')'+source.slice(cursor)),token=>{if(token.type==='link'&&token.href===marker)linked=true;});if(linked)spans.push({start,end:cursor,target});}}
+ return spans;
+}
+function trashLinkSpans(source,owner,ids){const spans=wikiScan(source).spans.flatMap(span=>{const target=resolveWikiLink(span.raw,owner).note?.id;return target&&target!==owner.id&&ids.has(target)?[{start:span.start,end:span.end,target}]:[];});
+ const result=[];for(const span of [...spans,...trashDirectSpans(source,ids).filter(span=>span.target!==owner.id)].sort((a,b)=>a.start-b.start||b.end-a.end))if(!result.length||span.start>=result.at(-1).end)result.push(span);return result;
+}
+function detachTrashLinkTokens(source,rows,spans,owner){
+ for(const span of [...spans].reverse()){
+  const {start,end,target}=span,text=source.slice(start,end);if(!text)continue;
+  let index=rows.findIndex(row=>row.at>start);if(index<0)index=rows.length;
+  for(const row of rows)if(row.at>start)row.at=Math.max(start,row.at-(end-start));
+  rows.splice(index,0,{owner,target,at:start,text});source=source.slice(0,start)+source.slice(end);
+ }
+ return source;
+}
+function reattachTrashLinkTokens(source,rows,ids){
+ for(let i=0;i<rows.length;){const row=rows[i];if(!ids.has(row.target)){i++;continue;}const at=Math.max(0,Math.min(source.length,row.at));source=source.slice(0,at)+row.text+source.slice(at);rows.splice(i,1);for(let j=i;j<rows.length;j++)rows[j].at+=row.text.length;}
+ return source;
+}
+function writeTrashLinkSource(w,owner,source){
+ // External file operations use the deletion history, not a second independent
+ // editor undo that could recreate a link to a file still in Trash.
+ trashLinkJournalBlocked.add(owner);writingTrashLinks=true;try{setSourceNote(owner,source);}finally{writingTrashLinks=false;}
+ const key=w.id+':'+owner.id,history=sourceHistory.get(key);if(history){history.history.length=history.redo.length=0;history.kind='';}
+ for(const root of $$('.editor')){const engine=sourceEditors.get(root);if(engine?.model===owner)engine.receive(owner.source);}
+ changed(owner);
+}
+function detachTrashLinks(w,ids,owners){
+ const rows=trashLinkRows(w);for(const owner of owners){const before=sourceForNote(owner),spans=trashLinkSpans(before,owner,ids);if(!spans.length)continue;
+  const own=rows.filter(row=>row.owner===owner.id).sort((a,b)=>a.at-b.at),source=detachTrashLinkTokens(before,own,spans,owner.id);for(let i=rows.length-1;i>=0;i--)if(rows[i].owner===owner.id)rows.splice(i,1);rows.push(...own);writeTrashLinkSource(w,owner,source);
+ }w.trashLinks=rows;
+}
+function restoreTrashLinks(w,ids){
+ const rows=trashLinkRows(w),owners=new Set(rows.filter(row=>ids.has(row.target)).map(row=>row.owner));
+ for(const id of owners){const owner=w.notes.find(n=>n.id===id);if(!owner)continue;const own=rows.filter(row=>row.owner===id).sort((a,b)=>a.at-b.at),source=reattachTrashLinkTokens(sourceForNote(owner),own,ids);for(let i=rows.length-1;i>=0;i--)if(rows[i].owner===id)rows.splice(i,1);rows.push(...own);writeTrashLinkSource(w,owner,source);}
+ w.trashLinks=rows.filter(row=>!ids.has(row.target));
+}
+function purgeTrashLinks(w,ids){if(w.trashLinks)w.trashLinks=trashLinkRows(w).filter(row=>!ids.has(row.target)&&!ids.has(row.owner));}
+async function loadTrashLinkOwners(w,ids){const owners=new Set(trashLinkRows(w).filter(row=>ids.has(row.target)).map(row=>row.owner));await wsLoadMany(w.notes.filter(n=>owners.has(n.id)),w);}
 const quietLegacyLinks=new WeakMap(),quietTrashChecks=new WeakSet();
 async function quietIncomingLinks(w,ids){
  const hits=[];let incomplete=false;
  for(const owner of w.notes){
-  if(ids.has(owner.id)||!quietNoteAvailable(owner,w)||isMediaFile(owner)||isCanvasFile(owner))continue;
+  if(isMediaFile(owner)||isCanvasFile(owner))continue;
   try{
-   const wiki=wikiContent(owner).spans.some(span=>ids.has(resolveWikiLink(span.raw,owner).note?.id));
+   const wiki=wikiContent(owner).spans.some(span=>{const id=resolveWikiLink(span.raw,owner).note?.id;return id!==owner.id&&ids.has(id);});
    if(wiki){hits.push(owner);continue;}
    let direct;
    if(!wsLazy.has(owner))direct=quietDirectLinks(sourceForNote(owner));
@@ -11900,23 +11983,26 @@ async function quietIncomingLinks(w,ids){
     if(!wsLazy.has(owner))direct=quietDirectLinks(sourceForNote(owner));
     else{direct=quietDirectLinks(typeof row.note.source==='string'?row.note.source:sourceForNote(row.note));if(direct.length<=1000)quietLegacyLinks.set(owner,direct);}
    }
-   if(direct.some(id=>ids.has(id)))hits.push(owner);
+   if(direct.some(id=>id!==owner.id&&ids.has(id)))hits.push(owner);
   }catch{incomplete=true;}
  }
  return {hits,incomplete};
 }
-async function checkNoteTrash(w,notes,{folder=false,commit=(ids)=>trashNotes(ids,true)}={}){
+async function prepareTrashLinkOwners(w,ids){const found=await quietIncomingLinks(w,ids);if(found.incomplete)throw Error('Some links could not be checked. Try again.');await wsLoadMany(found.hits,w);return w.notes.filter(n=>!wsLazy.has(n)&&!isMediaFile(n)&&!isCanvasFile(n));}
+async function checkNoteTrash(w,notes,{folder=false,commit=(ids,owners)=>trashNotes(ids,true,owners)}={}){
  if(quietTrashChecks.has(w))return;
  const ids=new Set(notes.map(n=>n.id));let found;
  quietTrashChecks.add(w);
  try{flushPendingNoteHTML();found=await quietIncomingLinks(w,ids);}catch{found={hits:[],incomplete:true};}finally{quietTrashChecks.delete(w);}
  if(workspace()!==w||notes.some(n=>!w.notes.includes(n)||!quietNoteAvailable(n,w)))return;
  if($('#dialog')?.open){flash('Close the open dialog and try moving to Trash again.');return;}
- const {hits,incomplete}=found;
- if(!hits.length&&!incomplete&&!folder){commit([...ids]);return;}
+ const {incomplete}=found,hits=found.hits.filter(n=>!ids.has(n.id)&&quietNoteAvailable(n,w));
+ if(incomplete){flash('Some links could not be checked. Try again.',true);return;}
+ const apply=async()=>{if(quietTrashChecks.has(w))return;quietTrashChecks.add(w);try{flushPendingNoteHTML();const owners=await prepareTrashLinkOwners(w,ids);if(workspace()===w&&notes.every(n=>w.notes.includes(n)&&quietNoteAvailable(n,w)))commit([...ids],owners);}catch(error){flash(error.message,true);}finally{quietTrashChecks.delete(w);}};
+ if(!hits.length&&!folder){void apply();return;}
  const prompt=hits.length?hits.length+' other note'+(hits.length===1?' links':'s link')+' to '+(folder?'files in these folders':notes.length===1?'this file':'these files')+'.':folder?'The selected folders and their contents will move to Trash.':'Some links could not be checked.';
- const d=showDialog('Move to Trash?', '<p>'+esc(prompt)+'</p>'+(hits.length?'<details class="quiet-trash-details"><summary>See linked notes</summary><div class="quiet-choice-list"></div></details>':'')+(incomplete&&hits.length?'<p class="quiet-context">Some additional links could not be checked.</p>':''),()=>{
-  if(workspace()!==w)return;d.close();commit([...ids]);
+ const d=showDialog('Move to Trash?', '<p>'+esc(prompt)+'</p>'+(hits.length?'<details class="quiet-trash-details"><summary>See linked notes</summary><div class="quiet-choice-list"></div></details>':'')+'<p class="quiet-context">Incoming links are removed too. Ctrl/⌘ Z or Restore brings them back; permanent deletion removes them for good.</p>',()=>{
+  if(workspace()!==w)return;d.close();void apply();
  },'Move to Trash','quiet-action-dialog');
  const list=$('.quiet-choice-list',d);
  if(list)for(const n of hits){
@@ -12393,6 +12479,7 @@ function purgeExpiredTrash(now=Date.now()){
   for(const id of expiredNotes){sourceHistory.delete(w.id+':'+id);notePositions(w).delete(id);}
   dirtyResumeWorkspaces.add(w);
   deletionHistories.delete(w.id);
+  purgeTrashLinks(w,expiredNotes);
   w.notes=w.notes.filter(note=>!expiredNotes.has(note.id));
   w.folders=w.folders.filter(folder=>!expiredFolders.has(folder.id));
   for(const p of w.panes){p.tabs=p.tabs.filter(id=>!expiredNotes.has(id));

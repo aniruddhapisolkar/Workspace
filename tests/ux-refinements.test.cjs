@@ -69,6 +69,47 @@ test('Archive sits beside Trash and keeps the search panel visible when toggled'
   assert.equal(ctx.searchMode,true);assert.equal(ctx.trashMode,false);assert.equal(ctx.activeFolder,null);
 });
 
+function trashLinkHelpers() {
+  let id=0;
+  const ctx=vm.createContext({uid:()=>String(++id),resolveWikiLink:raw=>({note:{id:raw.split(/[|#]/)[0]}}),wikiDisplay:raw=>raw});
+  vm.runInContext(scripts.find(m=>m[1].includes('data-vendor="marked"'))[2],ctx);
+  vm.runInContext(section('function wikiScan(', 'function wikiContent(')+section('function trashLinkRows(', 'const quietLegacyLinks='),ctx);
+  return ctx;
+}
+
+test('trash removes exact incoming wiki and direct links, not literals or unrelated links', () => {
+  const ctx=trashLinkHelpers(),source='See [[a#Heading|alias]], [label](note:a) and [old](#note-a). [[b]]\n`[[a]] [label](note:a)`\n```\n[[a]]\n```\n[ref][x]\n\n[x]: note:a';
+  const rows=[],ids=new Set(['a']),spans=ctx.trashLinkSpans(source,{id:'owner'},ids);
+  assert.deepEqual(plain(spans).map(s=>source.slice(s.start,s.end)),['[[a#Heading|alias]]','[label](note:a)','[old](#note-a)','[ref][x]']);
+  const cleaned=ctx.detachTrashLinkTokens(source,rows,spans,'owner');
+  assert.equal(cleaned,'See ,  and . [[b]]\n`[[a]] [label](note:a)`\n```\n[[a]]\n```\n\n\n[x]: note:a');
+  assert.equal(ctx.reattachTrashLinkTokens(cleaned,rows,ids),source);assert.equal(rows.length,0);
+});
+
+test('trash links survive serialization, edits and partial restores in either order', () => {
+  const ctx=trashLinkHelpers(),source='one [[a]][[b]][[a]] two [[b]] end',owner={id:'owner'},a=new Set(['a']),b=new Set(['b']);
+  for(const batches of [[a,b],[b,a],[new Set(['a','b'])]]){
+    let rows=[],cleaned=source;
+    for(const ids of batches)cleaned=ctx.detachTrashLinkTokens(cleaned,rows,ctx.trashLinkSpans(cleaned,owner,ids),'owner');
+    rows=JSON.parse(JSON.stringify(rows));assert.equal(cleaned,'one  two  end');
+    const edited='New '+cleaned+'!';ctx.rebaseTrashLinkPositions(rows,cleaned,edited);cleaned=edited;
+    for(const order of [[a,b],[b,a]]){const copy=structuredClone(rows);let text=cleaned;for(const ids of order)text=ctx.reattachTrashLinkTokens(text,copy,ids);assert.equal(text,'New '+source+'!');assert.equal(copy.length,0);}
+    const w={trashLinks:structuredClone(rows)};ctx.purgeTrashLinks(w,a);assert.ok(w.trashLinks.every(row=>row.target==='b'));
+  }
+});
+
+test('file deletion undo, redo and Trash recovery update source and persistent link records together', () => {
+  const ctx=trashLinkHelpers(),original='Before [[a#Section|reference]] and [direct](note:a) after.',owner={id:'owner',source:original},target={id:'a',source:'target'},w={id:'w',notes:[owner,target],folders:[],panes:[{tabs:['owner','a'],active:'a'}]};
+  const deletionHistories=new Map(),selected=new Set(),selectedFolders=new Set();
+  Object.assign(ctx,{workspace:()=>w,noteBy:id=>w.notes.find(n=>n.id===id),sourceForNote:n=>n.source,setSourceNote:(n,s)=>n.source=s,sourceHistory:new Map(),sourceEditors:new WeakMap(),$$:()=>[],$:()=>({focus(){}}),changed:()=>{},render:()=>{},flash:()=>{},invalidateWorkspaceIndex:()=>{},folderInTrash:()=>false,clearSelections:()=>{selected.clear();selectedFolders.clear();},collapseEmptyPanes:()=>{},structuredClone,deletionHistories,selected,selectedFolders,currentPane:0,activeFolder:null,anchorId:null,confirmTrashRestore:(_w,_ids,commit)=>commit()});
+  vm.runInContext(section('function trashNotes(', 'function isEditableTarget(')+section('function restoreTrashedNotes(', 'function confirmTrashRestore('),ctx);
+  ctx.trashNotes(['a'],true,[owner]);assert.ok(target.deleted);assert.equal(owner.source,'Before  and  after.');assert.equal(w.trashLinks.length,2);
+  assert.equal(ctx.undoNoteDeletionPrepared(false),true);assert.equal(target.deleted,0);assert.equal(owner.source,original);assert.equal(w.trashLinks.length,0);
+  assert.equal(ctx.undoNoteDeletionPrepared(true,[owner]),true);assert.ok(target.deleted);assert.equal(owner.source,'Before  and  after.');
+  const before=owner.source;owner.source='New '+before;ctx.rebaseTrashLinkPositions(w.trashLinks,before,owner.source);w.trashLinks=JSON.parse(JSON.stringify(w.trashLinks));
+  ctx.restoreTrashedNotes(['a'],true);assert.equal(target.deleted,0);assert.equal(owner.source,'New '+original);assert.equal(w.trashLinks.length,0);
+});
+
 function editorHelpers() {
   const context = vm.createContext({});
   vm.runInContext(section('function codeFenceLine(', 'function literalCodeFenceLength(') +
