@@ -20,6 +20,37 @@ test('all executable scripts parse', () => {
   }
 });
 
+test('checklist conversion preserves checked items, indentation and selection', () => {
+  const ctx=editorHelpers(), source='Alpha\n  - [x] Beta\n3. Gamma';
+  const result=ctx.noteListConversion(source,{from:0,to:source.length},'checklist');
+  assert.equal(result.text,'- [ ] Alpha\n  - [x] Beta\n- [ ] Gamma');
+  assert.equal(result.text.slice(result.selection.from,result.selection.to),'Alpha\n  - [x] Beta\n- [ ] Gamma');
+});
+
+test('table row and column moves preserve cells and column alignment', () => {
+  const ctx=vm.createContext({});
+  vm.runInContext(section('function reorderTableAxis(', 'function showTableCellGrid('),ctx);
+  const rows=[['A','B','C'],['1','2','3'],['4','5','6']],align=['left','center','right'];
+  ctx.reorderTableAxis(rows,align,'row',2,1);
+  ctx.reorderTableAxis(rows,align,'column',0,2);
+  assert.deepEqual(rows,[['B','C','A'],['5','6','4'],['2','3','1']]);
+  assert.deepEqual(align,['center','right','left']);
+  ctx.reorderTableAxis(rows,align,'column',2,0);
+  ctx.reorderTableAxis(rows,align,'row',1,2);
+  assert.deepEqual(rows,[['A','B','C'],['1','2','3'],['4','5','6']]);
+});
+
+test('archive moves folder subtrees and selected files in and out without deletion', () => {
+  const w={folders:[{id:'parent',parent:null},{id:'child',parent:'parent'}],notes:[{id:'inside',folder:'child'},{id:'loose',folder:null}]};
+  const ctx=vm.createContext({workspace:()=>w,workspaceIndex:()=>({foldersById:new Map(w.folders.map(f=>[f.id,f]))}),uid:()=> 'archive',invalidateWorkspaceIndex:()=>{},changed:()=>{},captureWikiReferences:()=>[],maintainWikiReferences:()=>{},folderInTrash:()=>false,noteBy:id=>w.notes.find(n=>n.id===id),quietSidebarFolders:new WeakMap(),clearSelections:()=>{},renderTree:()=>{}});
+  vm.runInContext(section('function descendants(', "$('#archive-nav').onclick"),ctx);
+  ctx.moveArchiveItems(['loose'],['parent','child'],true);
+  assert.equal(w.archiveFolder,'archive');assert.equal(w.folders[0].parent,'archive');assert.equal(w.folders[1].parent,'parent');
+  assert.equal(ctx.inArchive('child'),true);assert.equal(w.notes[1].folder,'archive');
+  ctx.moveArchiveItems(['loose'],['parent'],false);
+  assert.equal(ctx.inArchive('child'),false);assert.equal(w.notes[1].folder,null);assert.equal(w.notes[0].folder,'child');
+});
+
 function editorHelpers() {
   const context = vm.createContext({});
   vm.runInContext(section('function codeFenceLine(', 'function literalCodeFenceLength(') +
