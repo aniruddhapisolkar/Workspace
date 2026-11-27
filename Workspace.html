@@ -612,6 +612,7 @@ body.file-focus .focus-exit{position:static;flex:none;margin-left:4px;white-spac
 .table-cell-dialog .table-cell-input{position:absolute;z-index:1;margin:0;padding:4px 8px;border-radius:0;background:var(--panel);border:1px solid var(--muted);font-size:12px}
 .table-reorder-grips{position:absolute;inset:0;z-index:2;pointer-events:none}.table-reorder-grips button{position:absolute;width:18px;height:18px;padding:0;display:grid;place-items:center;pointer-events:auto;cursor:grab;color:var(--muted);background:var(--side);border:1px solid var(--line);opacity:.55}.table-reorder-grips button:hover,.table-reorder-grips button:focus-visible{opacity:1}.table-cell-scroll.reordering{outline:1px solid var(--muted)}
 #archive-nav.drag-over,#files-nav.drag-over{outline:1px solid var(--muted);background:var(--select)}
+.search-options .search-tree-actions{display:flex;align-items:center;gap:4px}.search-options .search-tree-actions button{border:1px solid color-mix(in srgb,var(--muted) 30%,var(--side));padding:3px 7px}
 .table-cell-hint,.table-cell-status{margin:8px 0 0;color:var(--muted);font-size:11px}
 .table-cell-status:empty{display:none}
 @media(pointer:coarse){.table-edit{opacity:.85}}
@@ -1206,8 +1207,8 @@ body:not(.sticky-headings) .note-sticky-heading{display:none!important}
 </style></head><body>
 <div id="app">
 <aside id="sidebar" aria-label="File browser">
-<nav class="side-nav"><button class="nav-item active" data-action="files" id="files-nav"></button><button class="nav-item" id="archive-nav">Archive</button><button class="nav-item" data-action="search" id="search-nav"></button></nav>
-<div id="search-box" hidden><input id="search-input" type="search" placeholder="Search all notes…" aria-label="Search all notes" title="Search text or combine filters: type:pdf folder:&quot;School Notes&quot; tag:school"><div class="search-options"><button id="trash-toggle" data-action="trash">Trash</button><span id="search-count"></span></div></div>
+<nav class="side-nav"><button class="nav-item active" data-action="files" id="files-nav"></button><button class="nav-item" data-action="search" id="search-nav"></button></nav>
+<div id="search-box" hidden><input id="search-input" type="search" placeholder="Search all notes…" aria-label="Search all notes" title="Search text or combine filters: type:pdf folder:&quot;School Notes&quot; tag:school"><div class="search-options"><div class="search-tree-actions"><button id="trash-toggle" data-action="trash" aria-pressed="false">Trash</button><button id="archive-nav" type="button" aria-pressed="false">Archive</button></div><span id="search-count"></span></div></div>
 <div class="file-actions"><button class="icon" data-action="new-note" title="New note · Ctrl/⌘ N" aria-label="New note" id="new-note-btn"></button><button class="icon" data-action="new-folder" title="New folder" aria-label="New folder" id="new-folder-btn"></button><button class="icon" data-action="passwords" title="Passwords" aria-label="Open password manager" aria-pressed="false" id="passwords-btn"></button><button type="button" class="icon" data-action="new-canvas" title="New canvas" aria-label="New canvas" id="new-canvas-btn"></button><span class="flex"></span><button class="icon quiet" data-action="files-menu" title="File options" aria-label="File options" id="files-menu-btn"></button></div>
 <section id="favorites" aria-label="Favorites" hidden></section>
 <div class="tree-scroll"><div id="tree" role="tree" aria-label="Notes and folders" aria-multiselectable="true" tabindex="0"></div></div>
@@ -9249,13 +9250,13 @@ let archiveMode=false,archiveWorkspace=null;
 function archiveRoot(w=workspace()){return w.archiveFolder||null;}
 function inArchive(id,w=workspace()){const root=archiveRoot(w);if(!root)return false;const seen=new Set(),byId=workspaceIndex(w).foldersById;while(id&&!seen.has(id)){if(id===root)return true;seen.add(id);id=byId.get(id)?.parent;}return false;}
 function ensureArchive(w=workspace()){let id=archiveRoot(w);if(!id){id=uid();w.archiveFolder=id;w.folders.push({id,name:'Archive',parent:null,closed:false});invalidateWorkspaceIndex(w);changed();}return id;}
-function syncArchiveMode(){const w=workspace();if(archiveWorkspace!==w){archiveWorkspace=w;archiveMode=false;}if(searchMode||trashMode)archiveMode=false;if(inArchive(activeFolder,w)!==archiveMode)activeFolder=archiveMode?archiveRoot(w):null;}
-function showArchiveTree(enabled){const w=workspace();archiveWorkspace=w;archiveMode=enabled;searchMode=trashMode=false;query='';$('#search-input').value='';quietSidebarFolders.delete(w);clearSelections();activeFolder=enabled?ensureArchive(w):null;renderTree();}
+function syncArchiveMode(){const w=workspace();if(archiveWorkspace!==w){archiveWorkspace=w;archiveMode=false;}if(!searchMode||trashMode)archiveMode=false;if(inArchive(activeFolder,w)!==archiveMode)activeFolder=archiveMode?archiveRoot(w):null;$('#archive-nav').setAttribute('aria-pressed',String(archiveMode));$('#trash-toggle').setAttribute('aria-pressed',String(trashMode));}
+function showArchiveTree(enabled){const w=workspace();archiveWorkspace=w;archiveMode=enabled;searchMode=true;trashMode=false;query='';$('#search-input').value='';quietSidebarFolders.delete(w);clearSelections();activeFolder=enabled?ensureArchive(w):null;renderTree();}
 function moveArchiveItems(noteIds,folderIds,into){const w=workspace(),target=into?ensureArchive(w):null,root=archiveRoot(w),folders=new Set(folderIds),refs=captureWikiReferences();
  for(const id of folders){const f=w.folders.find(item=>item.id===id);if(!f||id===root||f.deleted||folderInTrash(id,w)||into&&inArchive(id,w)||!into&&!inArchive(id,w))continue;if([...folders].some(parent=>parent!==id&&descendants(parent).has(id)))continue;f.parent=target;}
  for(const id of noteIds){const n=noteBy(id);if(n&&!n.deleted&&!folderInTrash(n.folder,w)&&inArchive(n.folder,w)!==into)n.folder=target;}
  maintainWikiReferences(refs);quietSidebarFolders.delete(w);clearSelections();changed();renderTree();}
-$('#archive-nav').onclick=()=>showArchiveTree(true);
+$('#archive-nav').onclick=()=>showArchiveTree(!archiveMode);
 $('#files-nav').addEventListener('click',()=>{archiveMode=false;activeFolder=null;quietSidebarFolders.delete(workspace());});
 for(const [button,into] of [[$('#archive-nav'),true],[$('#files-nav'),false]]){button.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('text/workspace-notes')){e.preventDefault();e.dataTransfer.dropEffect='move';button.classList.add('drag-over');}});button.addEventListener('dragleave',()=>button.classList.remove('drag-over'));button.addEventListener('drop',e=>{if(!e.dataTransfer.types.includes('text/workspace-notes'))return;e.preventDefault();button.classList.remove('drag-over');let payload;try{payload=JSON.parse(e.dataTransfer.getData('text/workspace-notes'));}catch{return;}moveArchiveItems(payload.ids||[],payload.folder?[payload.folder]:[],into);});}
 function notesInFolder(id){const set=descendants(id);return visibleNotes().filter(n=>set.has(n.folder));}
@@ -10857,7 +10858,7 @@ function dropTabToSplit(fromIndex,id,target){
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&tabDrag){event.preventDefault();event.stopPropagation();clearTabDrag();lastTabDrop=Date.now();}},true);
 
 function revealBreadcrumbFolder(id){
- const w=workspace();archiveWorkspace=w;archiveMode=inArchive(id,w);quietSidebarFolders.delete(w);searchMode=false;trashMode=false;query='';$('#search-input').value='';activeFolder=id;clearSelections();
+ const w=workspace();archiveWorkspace=w;archiveMode=inArchive(id,w);quietSidebarFolders.delete(w);searchMode=archiveMode;trashMode=false;query='';$('#search-input').value='';activeFolder=id;clearSelections();
  if(id&&id!==archiveRoot(w))selectedFolders.add(id);
  let current=w.folders.find(folder=>folder.id===id);const seen=new Set();
  while(current&&!seen.has(current.id)){seen.add(current.id);current.closed=false;current=w.folders.find(folder=>folder.id===current.parent);}

@@ -51,6 +51,19 @@ test('archive moves folder subtrees and selected files in and out without deleti
   assert.equal(ctx.inArchive('child'),false);assert.equal(w.notes[1].folder,null);assert.equal(w.notes[0].folder,'child');
 });
 
+test('Archive sits beside Trash and keeps the search panel visible when toggled', () => {
+  assert.match(html, /<div class="search-tree-actions"><button id="trash-toggle"[^>]*>Trash<\/button><button id="archive-nav"[^>]*>Archive<\/button>/);
+  const w={folders:[],notes:[]},controls=new Map();
+  const ctx=vm.createContext({workspace:()=>w,workspaceIndex:()=>({foldersById:new Map(w.folders.map(f=>[f.id,f]))}),uid:()=> 'archive',invalidateWorkspaceIndex:()=>{},changed:()=>{},quietSidebarFolders:new WeakMap(),clearSelections:()=>{},renderTree:()=>{},$:selector=>{if(!controls.has(selector))controls.set(selector,{value:'',setAttribute(key,value){this[key]=value;}});return controls.get(selector);},searchMode:true,trashMode:false,query:'',activeFolder:null});
+  vm.runInContext(section('let archiveMode=false,archiveWorkspace=null;', "$('#archive-nav').onclick"),ctx);
+  ctx.showArchiveTree(true);ctx.syncArchiveMode();
+  assert.equal(ctx.searchMode,true);assert.equal(ctx.activeFolder,'archive');assert.equal(controls.get('#archive-nav')['aria-pressed'],'true');
+  ctx.trashMode=true;ctx.syncArchiveMode();
+  assert.equal(controls.get('#archive-nav')['aria-pressed'],'false');assert.equal(ctx.activeFolder,null);
+  ctx.showArchiveTree(true);ctx.showArchiveTree(false);ctx.syncArchiveMode();
+  assert.equal(ctx.searchMode,true);assert.equal(ctx.trashMode,false);assert.equal(ctx.activeFolder,null);
+});
+
 function editorHelpers() {
   const context = vm.createContext({});
   vm.runInContext(section('function codeFenceLine(', 'function literalCodeFenceLength(') +
