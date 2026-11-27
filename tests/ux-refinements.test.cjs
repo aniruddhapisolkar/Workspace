@@ -20,6 +20,11 @@ test('all executable scripts parse', () => {
   }
 });
 
+test('only the active checklist line hides its rendered checkbox on screen', () => {
+  assert.match(html, /@media screen\s*\{\.source-editor \.md-task-line\.md-inline-active>input\[data-task-pos\]\{display:none\}\}/);
+  assert.match(html, /<input data-md-preview contenteditable="false" type="checkbox" aria-label="Checklist item" data-task-pos=/);
+});
+
 test('checklist conversion preserves checked items, indentation and selection', () => {
   const ctx=editorHelpers(), source='Alpha\n  - [x] Beta\n3. Gamma';
   const result=ctx.noteListConversion(source,{from:0,to:source.length},'checklist');
