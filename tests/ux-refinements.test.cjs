@@ -20,6 +20,73 @@ test('all executable scripts parse', () => {
   }
 });
 
+test('empty folder cleanup never selects folders containing files, Trash or unselected children', () => {
+  const ctx=vm.createContext({});vm.runInContext(section('function emptyFolderCandidates(', 'function emptyFoldersDialog('),ctx);
+  const w={archiveFolder:'archive',notes:[{folder:'occupied',deleted:1}],folders:[{id:'parent',parent:null},{id:'child',parent:'parent'},{id:'other',parent:'parent'},{id:'occupied',parent:null},{id:'archive',parent:null},{id:'trashed',parent:'occupied',deleted:1}]};
+  assert.deepEqual(plain(ctx.emptyFolderCandidates(w)).map(f=>f.id),['parent','child','other']);
+  assert.deepEqual(plain(ctx.emptyFolderRoots(w,new Set(['parent','child']))),['child']);
+  assert.deepEqual(plain(ctx.emptyFolderRoots(w,new Set(['parent','child','other','occupied','archive']))),['parent']);
+});
+
+test('file conflicts detect sibling and batch collisions and reserve unique case-insensitive names', () => {
+  const ctx=vm.createContext({wikiKey:s=>String(s||'').toLowerCase()});vm.runInContext(section('function availableFileTitle(', 'function fileConflictDialog('),ctx);
+  const existing={id:'old',title:'Study',folder:'to'},a={id:'a',title:'study',folder:'from'},b={id:'b',title:'Study',folder:'another'},c={id:'c',title:'fresh',folder:'from'},d={id:'d',title:'FRESH',folder:'another'},w={notes:[existing,a,b,c,d]};
+  const rows=ctx.fileMoveConflicts(w,[a,b,c,d],'to');assert.deepEqual(plain(rows).map(r=>[r.file.id,r.existing?.id||null]),[['a','old'],['b','old'],['d',null]]);
+  assert.equal(ctx.availableFileTitle('Study',new Set(['study','study (2)'])),'Study (3)');
+  existing.deleted=1;assert.deepEqual(plain(ctx.fileMoveConflicts(w,[a,b],'to')).map(r=>[r.file.id,r.existing]),[['b',null]]);
+});
+
+test('move conflicts skip, rename and replace without losing incoming file identities', async () => {
+  const old={id:'old',title:'Replace',folder:'to'},a={id:'a',title:'Replace',folder:'from'},b={id:'b',title:'Rename',folder:'from'},c={id:'c',title:'Skip',folder:'from'},w={notes:[old,a,b,c,{id:'old-b',title:'Rename',folder:'to'},{id:'old-c',title:'Skip',folder:'to'}],folders:[{id:'to'}],assets:{}};
+  const ctx=vm.createContext({workspace:()=>w,wikiKey:s=>String(s||'').toLowerCase(),isMediaFile:()=>false,folderInTrash:()=>false,flushPendingNoteHTML:()=>{},prepareTrashLinkOwners:async()=>[],trashNotes:ids=>w.notes.filter(n=>ids.includes(n.id)).forEach(n=>n.deleted=1),captureWikiReferences:()=>[],maintainWikiReferences:()=>{},updateTitles:()=>{},clearSelections:()=>{},changed:()=>{},renderTree:()=>{},flash:()=>{}});
+  vm.runInContext(section('function availableFileTitle(', 'function fileConflictDialog(')+section('async function moveFilesWithConflicts(', 'function moveDialog('),ctx);
+  ctx.fileConflictDialog=async rows=>new Map(rows.map(r=>[r.file.id,{action:{a:'replace',b:'rename',c:'skip'}[r.file.id],existing:r.existing}]));
+  assert.equal(await ctx.moveFilesWithConflicts(w,[a,b,c],'to'),true);assert.equal(old.deleted,1);assert.equal(a.folder,'to');assert.equal(a.title,'Replace');assert.equal(b.title,'Rename (2)');assert.equal(b.folder,'to');assert.equal(c.folder,'from');
+});
+
+test('closing a tab captures the current caret even when focus is on its close button', () => {
+  let saved;const ctx=vm.createContext({updateResumePosition:(_view,change)=>saved=change});vm.runInContext(section('function capturePanePosition(', 'function restorePanePosition('),ctx);
+  ctx.capturePanePosition({engine:{isReadOnly:()=>false,selection:()=>({from:122,to:122})},scroll:{scrollTop:812,scrollLeft:17}});
+  assert.deepEqual(plain(saved),{top:812,left:17,caret:122});
+  assert.match(html,/if\(ids.includes\(p.active\)\)\{const view=paneViews.get\(p\);if\(view\)\{capturePanePosition\(view,true\);flushResumePositions\(\);\}\}/);
+});
+
+test('custom visual calendar start folds only unused early hours and preserves scheduled blocks', () => {
+  const ctx=vm.createContext({settings:()=>({calendarDayStart:360}),validCalendarTimeBlock:r=>!!r&&r.start>=0&&r.end<=1440&&r.end>r.start});vm.runInContext(section('function calendarDayStart(', 'function mountCalendarTimeline('),ctx);
+  assert.equal(ctx.calendarDayStart(),360);assert.equal(ctx.calendarDayStart(1440),null);
+  const scale=ctx.calendarTimelineScale({start:480,end:1020},[{timeBlock:{start:120,end:180}}],false,360);
+  assert.deepEqual(plain(scale.folded).map(r=>[r.start,r.end]),[[0,120],[180,360]]);
+  assert.equal(scale.top(180)-scale.top(120),52);assert.ok(Math.abs(scale.minute(scale.top(540))-540)<1e-8);
+  assert.equal(ctx.calendarTimelineScale({start:480,end:1020},[],false,null).folded.length,0);
+});
+
+test('task splitting preserves duration, color, original reminder and subtasks', () => {
+  const key='2026-11-27',w={calendar:{days:{[key]:[{id:'a',text:'Study',depth:0,done:false,color:'blue',reminder:{at:123},timeBlock:{start:480,end:600}},{id:'child',text:'Review',depth:1},{id:'other',text:'Other',depth:0}]}}};
+  const ctx=vm.createContext({structuredClone,calendarManageSnapshot:w=>structuredClone(w.calendar),calendarTasks:(key,w)=>structuredClone(w.calendar.days[key]),validCalendarTimeBlock:r=>!!r&&r.start>=0&&r.end<=1440&&r.end>r.start,writeCalendarDay:(key,tasks,w)=>w.calendar.days[key]=tasks,calendarSubtreeEnd:(tasks,i)=>i+1+(tasks[i+1]?.depth>tasks[i].depth?1:0)});
+  vm.runInContext(section('function calendarSplitPlan(', 'function calendarSplitDialog('),ctx);
+  const plan=ctx.calendarSplitPlan(w,key,'a',540,'second'),rows=plan.after.days[key];assert.deepEqual(rows.map(row=>row.id),['a','child','second','other']);assert.deepEqual(plain(rows[0].timeBlock),{start:480,end:540});assert.deepEqual(plain(rows[2].timeBlock),{start:540,end:600});assert.equal(rows[2].color,'blue');assert.equal(rows[2].reminder,undefined);assert.equal(rows[0].reminder.at,123);assert.equal(w.calendar.days[key][0].timeBlock.end,600);assert.equal(ctx.calendarSplitPlan(w,key,'a',600,'second'),null);
+});
+
+test('splitting a recurring block changes only its chosen occurrence', () => {
+  const key='2026-11-27',task={id:'r',text:'Repeat',depth:0,rule:{id:'r'},timeBlock:{start:480,end:600}},w={calendar:{repeats:[{id:'r',schedule:{start:480,end:600}}],days:{}}};
+  const ctx=vm.createContext({structuredClone,calendarManageSnapshot:w=>structuredClone(w.calendar),calendarTasks:()=>[],calendarTaskFor:()=>structuredClone(task),validCalendarTimeBlock:r=>!!r&&r.end>r.start,writeCalendarDay:(key,tasks,w)=>w.calendar.days[key]={tasks}});vm.runInContext(section('function calendarSplitPlan(', 'function calendarSplitDialog('),ctx);
+  const plan=ctx.calendarSplitPlan(w,key,'repeat:r',540,'new');assert.deepEqual(plain(plan.after.days[key].blocks['repeat:r']),{start:480,end:540});assert.deepEqual(plain(plan.after.days[key].tasks[0].timeBlock),{start:540,end:600});assert.deepEqual(plan.after.repeats,w.calendar.repeats);assert.deepEqual(w.calendar.days,{});
+});
+
+test('Canvas culls distant connections but keeps edges that cross the current viewport', () => {
+  const ctx=vm.createContext({});vm.runInContext(section('function canvasViewportBounds(', 'function mountCanvas('),ctx);
+  const viewport=ctx.canvasViewportBounds({x:0,y:0,zoom:1},800,600,100),box=(x,y)=>({x,y,w:100,h:100});
+  assert.equal(ctx.canvasConnectionNear(box(-1000,0),box(1000,0),viewport),true);
+  assert.equal(ctx.canvasConnectionNear(box(900,900),box(1200,1000),viewport),false);
+  assert.equal(ctx.canvasBoundsContain(ctx.canvasViewportBounds({x:0,y:0,zoom:1},800,600,400),viewport),true);
+});
+
+test('menus flip above anchors and clamp to narrow viewports', () => {
+  const ctx=vm.createContext({});vm.runInContext(section('function menuViewportPosition(', 'let currentMenuAnchor='),ctx);
+  assert.deepEqual(plain(ctx.menuViewportPosition({left:760,top:560,bottom:580},240,180,800,600)),{left:554,top:376});
+  assert.deepEqual(plain(ctx.menuViewportPosition({left:0,top:0,bottom:20},180,120,200,200)),{left:6,top:24});
+});
+
 test('only the active checklist line hides its rendered checkbox on screen', () => {
   assert.match(html, /@media screen\s*\{\.source-editor \.md-task-line\.md-inline-active>input\[data-task-pos\]\{display:none\}\}/);
   assert.match(html, /<input data-md-preview contenteditable="false" type="checkbox" aria-label="Checklist item" data-task-pos=/);
