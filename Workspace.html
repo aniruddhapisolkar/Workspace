@@ -983,7 +983,7 @@ body.light{
  --highlight:color-mix(in srgb,var(--warning) 24%,white);--warning:color-mix(in srgb,var(--accent) 60%,#b88c42);
 }
 @media screen{
- #sidebar{border-radius:0}
+ #sidebar{border-radius:0 var(--radius-lg) var(--radius-lg) 0}
  .side-nav{padding:8px 12px 0}.nav-item{height:36px;gap:8px;padding:8px}
  .file-actions{padding:16px 12px 12px;gap:4px}.sidebar-footer{height:48px;padding:8px 12px;gap:4px}
  .tabs{height:36px;min-height:36px;padding:0 8px;gap:4px}
@@ -1045,6 +1045,7 @@ dialog[open]:not(.pdf-focus){animation:workspace-dialog-in 160ms var(--motion-ea
 kbd,.menu button kbd{display:inline-flex;align-items:center;justify-content:center;min-height:20px;padding:0 4px;font:11px/1.4 var(--font);color:var(--muted);background:var(--panel);border:1px solid var(--border-elevated);border-bottom-width:2px;border-radius:var(--radius-sm);white-space:nowrap}
 #sidebar-resizer,.pane-divider{position:relative;background:transparent!important}
 #sidebar-resizer{position:absolute}#sidebar-resizer::after,.pane-divider::after{content:'';position:absolute;inset:0 auto 0 50%;width:2px;transform:translateX(-50%);background:var(--accent);opacity:0;transition:opacity 120ms}
+#sidebar-resizer::after{top:var(--radius-lg);bottom:var(--radius-lg)}
 #sidebar-resizer:hover::after,.pane-divider:hover::after{opacity:.65;transition-delay:140ms}
 .floating-toolbar{padding:4px;gap:4px}.floating-toolbar .format-style-trigger{display:flex;align-items:center;gap:4px;min-width:64px;padding:4px 8px}.format-style-trigger svg{width:14px;height:14px}
 #toast,#reminder-toast{border-radius:var(--radius-md);padding:12px 16px;bottom:32px;animation:toast-in 180ms var(--motion-ease)}
