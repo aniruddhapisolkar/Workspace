@@ -285,10 +285,22 @@ body.paragraph-spotlight .source-editor:focus:has(>.md-active)>[data-md-block]:n
 .editor table :is(th,td),.canvas-markdown-content table :is(th,td){border:1px solid var(--line);background:transparent;padding:6px 10px;min-width:0;vertical-align:top}
 .editor table thead,.canvas-markdown-content table thead{border-bottom:1px solid var(--line)}
 .editor table th,.canvas-markdown-content table th{font-weight:600}
-.editor-block[data-margin-note=true]{border-left:1px solid var(--line);padding:4px 0 4px 12px;margin:.5em 0;color:var(--muted);font-size:.78em;line-height:1.55}
-.editor-block[data-margin-note=true]:not(.md-active)::before{content:'Margin note';display:block;color:var(--faint);font:11px var(--font);margin-bottom:4px;pointer-events:none}
-.document:has(>.source-editor>[data-margin-note=true]){container-type:inline-size}
-@container (min-width:680px){.document>.source-editor:has(>[data-margin-note=true]){padding-right:164px}.document>.source-editor>[data-margin-note=true]{float:right;clear:right;width:145px;margin:0 -165px 12px 16px;overflow-wrap:anywhere}}
+.marginalia-host{position:relative;--margin-rail-width:clamp(132px,24%,208px);--margin-rail-gap:22px}
+.canvas-card.marginalia-host{position:absolute}
+.document.marginalia-host.marginalia-active:not(.marginalia-compact){max-width:1080px;padding-right:calc(var(--margin-rail-width) + var(--margin-rail-gap) + 32px)}
+.document.narrow.marginalia-host.marginalia-active:not(.marginalia-compact){max-width:calc(var(--reading-width,720px) + 230px)}
+.scratchpad-scroll.marginalia-host.marginalia-active:not(.marginalia-compact){padding-right:calc(var(--margin-rail-width) + var(--margin-rail-gap) + 16px)}
+.canvas-card.marginalia-host.marginalia-active:not(.marginalia-compact)>.canvas-inline-editor{margin-right:calc(var(--margin-rail-width) + var(--margin-rail-gap))}
+.marginalia-rail{position:absolute;right:16px;top:0;width:var(--margin-rail-width);border-left:1px solid var(--line);padding-left:12px;color:var(--muted);font:11px/1.55 var(--font);user-select:text;z-index:2;pointer-events:none}
+.document>.marginalia-rail{right:24px}.marginalia-rail[hidden]{display:none!important}
+.marginalia-entry{position:absolute;width:calc(100% - 12px);border-left:2px solid var(--line);padding:4px 4px 4px 8px;overflow-wrap:anywhere;pointer-events:auto;transition:top 100ms ease-out}
+.marginalia-entry:is(:hover,:focus-within){border-color:var(--muted)}.marginalia-entry button{display:block;text-align:left;width:100%;padding:2px 0;border:0;background:none;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
+.marginalia-anchor{color:var(--faint);font-size:10px!important;white-space:nowrap!important;overflow:hidden;text-overflow:ellipsis}.marginalia-text{color:var(--muted)}.marginalia-entry button:hover{color:var(--text)}
+.marginalia-compact>.marginalia-rail{position:relative;right:auto;top:auto;width:100%;max-height:200px;overflow:auto;margin-top:12px;border-top:1px solid var(--line);border-left:0;padding:8px 0;pointer-events:auto}
+.marginalia-compact>.marginalia-rail>.marginalia-entry{position:relative;top:auto!important;width:100%;margin:4px 0;transition:none}
+.canvas-card>.marginalia-rail{overflow:hidden}.canvas-card.marginalia-compact>.marginalia-rail{max-height:35%;flex-shrink:0}
+@media(prefers-reduced-motion:reduce){.marginalia-entry{transition:none}}
+@media print{.document.marginalia-host.marginalia-active{padding-right:0!important;max-width:none!important}.marginalia-rail{position:relative!important;top:auto!important;right:auto!important;width:100%!important;height:auto!important;max-height:none!important;margin-top:12px}.marginalia-entry{position:relative!important;top:auto!important;width:100%!important;break-inside:avoid}}
 .canvas-markdown-content blockquote[data-margin-note=true]{border-left:1px solid var(--line);padding:4px 0 4px 12px;margin:.5em 0;color:var(--muted);font-size:.78em;line-height:1.55;overflow-wrap:anywhere}
 .canvas-markdown-content blockquote[data-margin-note=true]>small{color:var(--faint);font:11px var(--font)}
 .source-editor .md-image-inline[data-text-wrap]{display:block;float:var(--wrap-side);clear:none;width:var(--wrap-width);margin:0 var(--wrap-right-gap) .55em var(--wrap-left-gap)}
@@ -298,7 +310,10 @@ body.paragraph-spotlight .source-editor:focus:has(>.md-active)>[data-md-block]:n
 .source-editor>.md-paragraph:has(>.md-image-inline[data-text-wrap]){display:block;min-height:1em}
 .source-editor>:is(.md-table,.md-code,.md-heading,.md-hr,.image-row){clear:both}
 .source-editor::after{content:'';display:block;clear:both}
-.source-editor .image-wrap-preview{display:block;float:var(--wrap-side);width:var(--wrap-width);clear:none;margin:0 var(--wrap-right-gap) .55em var(--wrap-left-gap);pointer-events:none;user-select:none;overflow:hidden}
+.source-editor .image-wrap-preview{display:block;float:var(--wrap-side);width:var(--wrap-width);clear:none;margin:0 var(--wrap-right-gap) 14px var(--wrap-left-gap);pointer-events:none;user-select:none;overflow:hidden;transition:margin-left 100ms ease-out,margin-right 100ms ease-out,width 100ms ease-out}
+@media(prefers-reduced-motion:reduce){.source-editor .image-wrap-preview{transition:none}}
+.source-editor .image-wrap-source-hidden{visibility:hidden!important;pointer-events:none!important}.source-editor .image-wrap-source-collapsed{position:absolute!important;width:0!important;height:0!important;overflow:hidden!important;margin:0!important}
+.source-editor .md-image-inline[data-text-wrap],.editor .media[data-wrap-side]:not(.md-image-inline .media){margin-bottom:14px}
 .image-wrap-preview img{display:block;width:100%;height:auto;object-fit:contain}.image-wrap-preview figcaption{font-size:11px;color:var(--muted);padding-top:8px;white-space:pre-wrap}
 .source-editor>.md-paragraph:has(>.image-wrap-preview){padding-left:var(--block-indent,0px);min-height:1em}.source-editor>.md-paragraph:has(>.image-wrap-preview)>.md-indent-prefix{display:none!important}
 @media(prefers-reduced-motion:reduce){.canvas-edge-line,body.adaptive-interface .pane :is(.pane-top,.statusbar,.tabs),body.paragraph-spotlight .source-editor>[data-md-block]{transition:none!important}}
@@ -616,6 +631,7 @@ body.file-focus .focus-exit{position:static;flex:none;margin-left:4px;white-spac
 .table-reorder-grips{position:absolute;inset:0;z-index:2;pointer-events:none}.table-reorder-grips button{position:absolute;width:18px;height:18px;padding:0;display:grid;place-items:center;pointer-events:auto;cursor:grab;color:var(--muted);background:var(--side);border:1px solid var(--line);opacity:.55}.table-reorder-grips button:hover,.table-reorder-grips button:focus-visible{opacity:1}.table-cell-scroll.reordering{outline:1px solid var(--muted)}
 #archive-nav.drag-over,#files-nav.drag-over{outline:1px solid var(--muted);background:var(--select)}
 .search-options .search-tree-actions{display:flex;align-items:center;gap:4px}.search-options .search-tree-actions button{border:1px solid color-mix(in srgb,var(--muted) 30%,var(--side));padding:3px 7px}
+.search-options{flex-wrap:wrap;gap:6px 10px}.search-tree-actions{flex:0 0 auto}.search-tree-actions button{flex:0 0 auto;white-space:nowrap}#search-count{margin-left:auto;white-space:nowrap;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;text-align:right}
 .table-cell-hint,.table-cell-status{margin:8px 0 0;color:var(--muted);font-size:11px}
 .table-cell-status:empty{display:none}
 @media(pointer:coarse){.table-edit{opacity:.85}}
@@ -2063,15 +2079,17 @@ function sourceMediaHTML(ref,alt='',title='',n=sourceRenderNote){
  return html;
 }
 function validImageTextWrap(value){return !!value&&['left','right'].includes(value.side)&&Number.isFinite(value.width)&&value.width>=.08&&value.width<=.72&&Number.isFinite(value.offset)&&value.offset>=0&&value.offset+value.width<=.9+1e-6;}
-function imageTextWrapStyle(wrap){return `--wrap-side:${wrap.side};--wrap-width:${wrap.width*100}%;--wrap-left-gap:${wrap.side==='left'?wrap.offset*100+'%':'12px'};--wrap-right-gap:${wrap.side==='right'?wrap.offset*100+'%':'12px'}`;}
+function imageTextWrapGaps(wrap){const inset='max(12px, '+wrap.offset*100+'%)';return {left:wrap.side==='left'?inset:'18px',right:wrap.side==='right'?inset:'18px'};}
+function imageTextWrapStyle(wrap){const gaps=imageTextWrapGaps(wrap);return `--wrap-side:${wrap.side};--wrap-width:${wrap.width*100}%;--wrap-left-gap:${gaps.left};--wrap-right-gap:${gaps.right}`;}
 function imageTextWrapFromMedia(media){const value={side:media.dataset.wrapSide,width:Number(media.dataset.wrapWidth),offset:Number(media.dataset.wrapOffset)};return validImageTextWrap(value)?value:null;}
 function applyImageTextWrap(wrapper,wrap){
  if(!wrap){wrapper.removeAttribute('data-text-wrap');for(const key of ['--wrap-side','--wrap-width','--wrap-left-gap','--wrap-right-gap'])wrapper.style.removeProperty(key);return;}
- wrapper.dataset.textWrap=wrap.side;wrapper.style.setProperty('--wrap-side',wrap.side);wrapper.style.setProperty('--wrap-width',wrap.width*100+'%');wrapper.style.setProperty('--wrap-left-gap',wrap.side==='left'?wrap.offset*100+'%':'12px');wrapper.style.setProperty('--wrap-right-gap',wrap.side==='right'?wrap.offset*100+'%':'12px');
+ const gaps=imageTextWrapGaps(wrap);wrapper.dataset.textWrap=wrap.side;wrapper.style.setProperty('--wrap-side',wrap.side);wrapper.style.setProperty('--wrap-width',wrap.width*100+'%');wrapper.style.setProperty('--wrap-left-gap',gaps.left);wrapper.style.setProperty('--wrap-right-gap',gaps.right);
 }
-function imageWrapAt(width,imageWidth,relativeX,explicit=false){
- const fraction=Math.max(.08,Math.min(.72,imageWidth/Math.max(1,width))),left=Math.max(0,Math.min(1-fraction,relativeX/Math.max(1,width))),side=left+(fraction/2)>.5?'right':'left';
- return {side,width:fraction,offset:explicit?0:Math.max(0,Math.min(.9-fraction,side==='left'?left:1-left-fraction))};
+function imageWrapLimit(width){return Math.max(.08,Math.min(.66,1-150/Math.max(1,width)));}
+function imageWrapAt(width,imageWidth,relativeX,explicit=false,previousSide=null){
+ const fraction=Math.max(.08,Math.min(imageWrapLimit(width),imageWidth/Math.max(1,width))),left=Math.max(0,Math.min(1-fraction,relativeX/Math.max(1,width))),center=left+fraction/2,side=previousSide&&Math.abs(center-.5)<.045?previousSide:center>.5?'right':'left';
+ return {side,width:fraction,offset:explicit?0:Math.max(0,Math.min(.86-fraction,1-138/Math.max(1,width)-fraction,side==='left'?left:1-left-fraction))};
 }
 const IMAGE_ROW_LIMIT=6,IMAGE_ROW_GAP=12;
 const imageRowKey=refs=>JSON.stringify(refs);
@@ -2160,17 +2178,22 @@ function imageParkingSpots(occupied,width,incomingWidth,remaining){
 }
 let imageRowDrag=null;
 function wireImageRowInteractions(root,engine){
- let plan=null,overlay=null,activeSpot=-1,disposed=false,textPlan=null,wrapPreview=null,hiddenSource=null,externalPreviewURL=null;
+ let plan=null,overlay=null,activeSpot=-1,disposed=false,textPlan=null,wrapPreview=null,hiddenSource=null,externalPreviewURL=null,previewAnchor=null;
  const scroller=root.closest('.document-scroll,.scratchpad-scroll'),surface=scroller||root;
- function clearWrapPreview(){if(wrapPreview){const parent=wrapPreview.parentNode;wrapPreview.remove();parent?.normalize();wrapPreview=null;}if(hiddenSource){hiddenSource.wrapper.style.cssText=hiddenSource.style;hiddenSource=null;}}
+ function detachWrapPreview(){if(wrapPreview?.parentNode){const parent=wrapPreview.parentNode;wrapPreview.remove();parent.normalize();}previewAnchor=null;}
+ function clearWrapPreview(){detachWrapPreview();wrapPreview=null;if(hiddenSource){hiddenSource.classList.remove('image-wrap-source-hidden','image-wrap-source-collapsed');hiddenSource=null;}}
  function paintWrapPreview(target,wrap,at,drag,fileItems){
-  const figure=document.createElement('figure');figure.className='image-wrap-preview';figure.dataset.mdPreview='';figure.contentEditable='false';figure.setAttribute('aria-hidden','true');figure.style.cssText=imageTextWrapStyle(wrap);
+  const original=drag?.item.media?.closest('.md-image-inline');if(original?.isConnected){hiddenSource=original;original.classList.add('image-wrap-source-hidden');original.classList.toggle('image-wrap-source-collapsed',drag.item.block===target);}
+  if(!wrapPreview){const figure=document.createElement('figure');figure.className='image-wrap-preview';figure.dataset.mdPreview='';figure.contentEditable='false';figure.setAttribute('aria-hidden','true');
   const media=drag?.item.media,image=media?.querySelector('img'),url=image?.currentSrc||image?.src;
   if(!url&&!externalPreviewURL){try{const file=fileItems[0]?.getAsFile?.();if(file)externalPreviewURL=URL.createObjectURL(file);}catch{}}
   if(url||externalPreviewURL){const preview=document.createElement('img');preview.alt='';preview.draggable=false;preview.src=url||externalPreviewURL;const ratio=image?.naturalWidth/image?.naturalHeight;if(Number.isFinite(ratio)&&ratio>0)preview.style.aspectRatio=String(ratio);figure.append(preview);}else figure.style.aspectRatio='4 / 3';
   const caption=media?.querySelector('.image-caption')?.value||media?.querySelector('figcaption')?.textContent;if(caption?.trim()){const text=document.createElement('figcaption');text.textContent=caption;figure.append(text);}
-  const original=media?.closest('.md-image-inline');if(original?.isConnected){hiddenSource={wrapper:original,style:original.style.cssText};Object.assign(original.style,{position:'absolute',width:'0px',height:'0px',opacity:'0',pointerEvents:'none',overflow:'hidden',margin:'0'});}
-  try{const range=engine.sourceRange(at),node=range.startContainer;if(target.contains(node)){let child=node.nodeType===1?node:node.parentElement;while(child!==target&&child.parentElement!==target)child=child.parentElement;if(child!==target)target.insertBefore(figure,child);else range.insertNode(figure);}else target.prepend(figure);}catch{target.prepend(figure);}wrapPreview=figure;
+  wrapPreview=figure;}
+  const figure=wrapPreview;figure.style.cssText=imageTextWrapStyle(wrap);
+  if(previewAnchor?.target===target&&previewAnchor.at===at&&figure.parentNode)return;
+  detachWrapPreview();
+  try{const range=engine.sourceRange(at),node=range.startContainer;if(target.contains(node)){let child=node.nodeType===1?node:node.parentElement;while(child!==target&&child.parentElement!==target)child=child.parentElement;if(child!==target)target.insertBefore(figure,child);else range.insertNode(figure);}else target.prepend(figure);}catch{target.prepend(figure);}previewAnchor={target,at};
  }
  const clear=()=>{
   clearWrapPreview();
@@ -2226,12 +2249,15 @@ function wireImageRowInteractions(root,engine){
   if(!internal&&!images)return;
   if(!internal&&!root.contains(event.target))return;
   if(wrapPreview?.isConnected&&textPlan?.source===engine.source()&&textPlan.x===event.clientX&&textPlan.y===event.clientY&&textPlan.snap===event.shiftKey){event.preventDefault();event.stopImmediatePropagation();event.dataTransfer.dropEffect=internal?'move':'copy';return;}
-  clearWrapPreview();
   const target=(internal||fileItems.length===1&&images)&&engine.imageWrapTarget(event.clientX,event.clientY);
   if(target){
    if(plan||overlay)clear();
-   const bounds=target.getBoundingClientRect(),drag=internal?imageRowDrag:null,width=drag?.width||bounds.width*.38,newWidth=Math.max(bounds.width*.08,Math.min(width,bounds.width*.72)),grab=drag?Math.min(1,drag.grabOffset/Math.max(1,width))*newWidth:newWidth/2;
-   const wrap=imageWrapAt(bounds.width,width,event.clientX-bounds.left-grab,event.shiftKey);textPlan={block:target,wrap,at:engine.imageWrapAnchor(target,event.clientX,event.clientY),source:engine.source(),x:event.clientX,y:event.clientY,snap:event.shiftKey};
+   const same=textPlan?.block===target&&textPlan.source===engine.source();if(!same)clearWrapPreview();
+   const bounds=target.getBoundingClientRect(),drag=internal?imageRowDrag:null,width=drag?.width||bounds.width*.38,newWidth=Math.max(bounds.width*.08,Math.min(width,bounds.width*imageWrapLimit(bounds.width))),grab=drag?Math.min(1,drag.grabOffset/Math.max(1,width))*newWidth:newWidth/2;
+   const wrap=imageWrapAt(bounds.width,width,event.clientX-bounds.left-grab,event.shiftKey,same?textPlan.wrap.side:null);
+   let at=same?textPlan.at:null,anchorY=same?textPlan.anchorY:event.clientY;const line=Math.max(14,parseFloat(getComputedStyle(target).lineHeight)||24);
+   if(!same||Math.abs(event.clientY-anchorY)>=line*.8){if(wrapPreview)wrapPreview.style.display='none';try{at=engine.imageWrapAnchor(target,event.clientX,event.clientY);}finally{if(wrapPreview)wrapPreview.style.display='';}anchorY=event.clientY;}
+   textPlan={block:target,wrap,at,source:engine.source(),x:event.clientX,y:event.clientY,anchorY,snap:event.shiftKey};
    paintWrapPreview(target,wrap,textPlan.at,drag,fileItems);
    event.preventDefault();event.stopImmediatePropagation();event.dataTransfer.dropEffect=internal?'move':'copy';return;
   }
@@ -2255,6 +2281,7 @@ function wireImageRowInteractions(root,engine){
   const internal=imageRowDrag?.engine===engine?imageRowDrag:null;
   if(!internal&&!plan&&!textPlan)return;
   event.preventDefault();event.stopImmediatePropagation();
+  if(textPlan&&(Math.abs(event.clientX-textPlan.x)>2||Math.abs(event.clientY-textPlan.y)>2||textPlan.snap!==event.shiftKey))over(event);
   if(externalPreviewURL){URL.revokeObjectURL(externalPreviewURL);externalPreviewURL=null;}
   if(textPlan){
    const {block,wrap,source,at}=textPlan;clear();imageRowDrag=null;
@@ -2293,16 +2320,17 @@ function wireImageRowInteractions(root,engine){
   const occurrence=String(item.from);media.dataset.imageOccurrence=occurrence;
   const rect=media.getBoundingClientRect();imageRowDrag={engine,item,occurrence,width:rect.width,height:rect.height,grabOffset:Math.max(0,event.clientX-rect.left),source:engine.source()};
   event.stopPropagation();event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('application/x-workspace-image',JSON.stringify({note:engine.model.id,from:item.from}));event.dataTransfer.setData('text/plain',item.raw);
-  const image=media.querySelector('img');if(image)event.dataTransfer.setDragImage(image,Math.min(30,image.clientWidth/2),Math.min(30,image.clientHeight/2));
+  // The live float is the drag feedback. Suppress the browser's second image.
+  const ghost=document.createElement('canvas');ghost.width=ghost.height=1;Object.assign(ghost.style,{position:'fixed',top:'0',left:'0',pointerEvents:'none'});document.body.append(ghost);event.dataTransfer.setDragImage(ghost,0,0);setTimeout(()=>ghost.remove(),0);
  }
- function end(){clear();if(externalPreviewURL){URL.revokeObjectURL(externalPreviewURL);externalPreviewURL=null;}imageRowDrag=null;}
+ function end(){clear();if(externalPreviewURL){URL.revokeObjectURL(externalPreviewURL);externalPreviewURL=null;}if(imageRowDrag?.engine===engine)imageRowDrag=null;}
  function leave(event){if(!surface.contains(event.relatedTarget)){clear();if(!imageRowDrag&&externalPreviewURL){URL.revokeObjectURL(externalPreviewURL);externalPreviewURL=null;}}}
  function escape(event){if(event.key==='Escape')end();}
  function equal(event){const button=event.target.closest('[data-equal-images]');if(!button)return;event.preventDefault();event.stopImmediatePropagation();clear();engine.equalImages(button.closest('[data-md-block]'));}
  root.addEventListener('dragstart',start,true);surface.addEventListener('dragover',over,true);surface.addEventListener('drop',drop,true);surface.addEventListener('dragleave',leave);root.addEventListener('click',equal,true);
  document.addEventListener('dragend',end);document.addEventListener('keydown',escape,true);
- scroller?.addEventListener('scroll',clear,{passive:true});window.addEventListener('resize',clear);
- return ()=>{disposed=true;end();root.removeEventListener('dragstart',start,true);surface.removeEventListener('dragover',over,true);surface.removeEventListener('drop',drop,true);surface.removeEventListener('dragleave',leave);root.removeEventListener('click',equal,true);document.removeEventListener('dragend',end);document.removeEventListener('keydown',escape,true);scroller?.removeEventListener('scroll',clear);window.removeEventListener('resize',clear);};
+ function scrolled(){if(textPlan){textPlan.x=null;textPlan.anchorY=Infinity;}else clear();}scroller?.addEventListener('scroll',scrolled,{passive:true});window.addEventListener('resize',clear);
+ return ()=>{disposed=true;end();root.removeEventListener('dragstart',start,true);surface.removeEventListener('dragover',over,true);surface.removeEventListener('drop',drop,true);surface.removeEventListener('dragleave',leave);root.removeEventListener('click',equal,true);document.removeEventListener('dragend',end);document.removeEventListener('keydown',escape,true);scroller?.removeEventListener('scroll',scrolled);window.removeEventListener('resize',clear);};
 }
 
 function sourceImageRowHTML(token,n=sourceRenderNote){
@@ -2549,9 +2577,45 @@ function htmlToSource(html,n){
 }
 function sourceForNote(n){const cached=sourceReadCache.get(n);if(cached&&cached.source===n.source&&cached.html===n.html&&cached.hash===n.sourceHtmlHash)return n.source;if(typeof n.source!=='string'||n.sourceHtmlHash!==sourceHash(n.html)){n.source=htmlToSource(n.html,n);n.sourceHtmlHash=sourceHash(n.html);}const literal=normalizeLiteralCodeFences(n.source).source;if(literal!==n.source){n.source=literal;n.html=renderSourceHTML(literal,n);n.sourceHtmlHash=sourceHash(n.html);}rememberSourceNote(n);return n.source;}
 
-function setSourceNote(n,source){const next=normalizeLiteralCodeFences(source).source;rebaseTrashLinks(n,n.source,next);n.source=next;n.html=renderSourceHTML(n.source,n);n.sourceHtmlHash=sourceHash(n.html);n.updated=Date.now();rememberSourceNote(n);}
+function marginNotes(rows){return Array.isArray(rows)?rows.filter(row=>row&&typeof row.id==='string'&&typeof row.text==='string'&&Number.isSafeInteger(row.from)&&Number.isSafeInteger(row.to)&&row.from>=0&&row.to>=row.from):[];}
+function rebaseMarginNotes(rows,before,after){
+ if(typeof before!=='string'||before===after)return marginNotes(rows);const notes=marginNotes(rows);if(!notes.length)return notes;
+ let start=0,end=0;while(start<before.length&&start<after.length&&before[start]===after[start])start++;while(end<before.length-start&&end<after.length-start&&before[before.length-1-end]===after[after.length-1-end])end++;
+ const oldEnd=before.length-end,newEnd=after.length-end,delta=newEnd-oldEnd,clamp=value=>Math.max(0,Math.min(after.length,value));
+ return notes.map(note=>{let {from,to}=note;const old=before.slice(from,to),quote=note.quote||old.slice(0,240);if(note.orphaned&&quote&&!before.includes(quote)){const exact=after.indexOf(quote);if(exact>=0&&after.indexOf(quote,exact+1)<0)return {...note,from:exact,to:exact+quote.length,orphaned:false};}if(from>=oldEnd){from+=delta;to+=delta;}else if(to>start){const exact=old&&after.indexOf(old);if(old&&exact>=0&&after.indexOf(old,exact+1)<0){from=exact;to=exact+old.length;}else if(from>=start&&to<=oldEnd&&newEnd===start){from=to=start;return {...note,from:clamp(from),to:clamp(to),quote,orphaned:true};}else{from=from<start?from:start;to=to>=oldEnd?to+delta:newEnd;}}
+  from=clamp(from);to=Math.max(from,clamp(to));return {...note,from,to,quote:note.orphaned?quote:after.slice(from,to).trim().slice(0,240)||quote};});
+}
+function migrateLegacyMarginalia(source,stored=[]){
+ const rows=marginNotes(stored),edits=[],fences=literalCodeBlocks(source);for(const match of source.matchAll(/^[ \t]*>[ \t]*\[!margin\](?:[ \t]+|$)([^\n]*)(?:\n|$)/gim)){const from=match.index;if(fences.some(f=>from>=f.start&&from<(f.end??source.length)))continue;const text=match[1].trim(),end=from+match[0].length;if(text)edits.push({from,to:end+(source[end]==='\n'?1:0),text});}
+ if(!edits.length)return {source,notes:rows,changed:false};let clean=source,notes=rows;for(const edit of [...edits].reverse()){const next=clean.slice(0,edit.from)+clean.slice(edit.to);notes=rebaseMarginNotes(notes,clean,next);clean=next;}let removed=0;
+ for(const edit of edits){let from=edit.from-removed;removed+=edit.to-edit.from;while(from<clean.length&&/\s/.test(clean[from]))from++;if(from>=clean.length&&clean.trim()){from=clean.lastIndexOf('\n',clean.trimEnd().length-1)+1;}let to=clean.indexOf('\n',from);if(to<0)to=clean.length;notes.push({id:uid(),from,to,text:edit.text,quote:clean.slice(from,to).trim().slice(0,240)});}
+ return {source:clean,notes,changed:true};
+}
+function markdownWithMarginalia(source,rows){const insertions=new Map(),fences=literalCodeBlocks(source);for(const note of marginNotes(rows)){const at=Math.min(note.from,source.length),fence=fences.find(f=>at>=f.start&&at<f.end),line=fence?.start??(at===0?0:source.lastIndexOf('\n',at-1)+1),text='> [!margin] '+note.text.replace(/\s*\n\s*/g,' ')+'\n\n';insertions.set(line,(insertions.get(line)||'')+text);}for(const [at,text] of [...insertions].sort((a,b)=>b[0]-a[0]))source=source.slice(0,at)+text+source.slice(at);return source;}
+function setSourceNote(n,source){const next=normalizeLiteralCodeFences(source).source;rebaseTrashLinks(n,n.source,next);if(n.marginalia)n.marginalia=rebaseMarginNotes(n.marginalia,n.source,next);n.source=next;n.html=renderSourceHTML(n.source,n);n.sourceHtmlHash=sourceHash(n.html);n.updated=Date.now();rememberSourceNote(n);}
 function activeSourceEditor(){return sourceEditors.get($('.pane.focused:not(:has(>.embedded-file-reader)) .editor'));}
-function mountSourceEditor(root,n,index,onChange){const editor=createSourceEditor(root,n,index,onChange);sourceEditors.set(root,editor);editor.disposeImageRows=wireImageRowInteractions(root,editor);return editor;}
+function marginaliaLayout(entries,gap=10){let bottom=0;return entries.slice().sort((a,b)=>a.y-b.y||a.from-b.from).map(entry=>{const top=Math.max(0,entry.y,bottom);bottom=top+entry.height+gap;return {...entry,top};});}
+function wireMarginaliaRail(root,engine){
+ const host=root.parentElement;if(!host)return ()=>{};const rail=document.createElement('aside');rail.className='marginalia-rail';rail.setAttribute('aria-label','Margin notes');rail.hidden=true;host.classList.add('marginalia-host');host.append(rail);
+ const cards=new Map();let frame=0,disposed=false;
+ function jump(note){const range={from:Math.min(note.from,engine.source().length),to:Math.min(note.to,engine.source().length)};engine.revealMatch(range);if(!engine.isReadOnly())engine.setSelection(range);}
+ function paint(){frame=0;if(disposed||!root.isConnected)return;const notes=marginNotes(engine.model.marginalia),ids=new Set(notes.map(note=>note.id));rail.hidden=!notes.length;host.classList.toggle('marginalia-active',notes.length>0);host.classList.toggle('marginalia-compact',host.clientWidth<510);
+  for(const [id,card]of cards)if(!ids.has(id)){card.remove();cards.delete(id);}if(!notes.length)return;
+  const compact=host.classList.contains('marginalia-compact'),inline=host.classList.contains('canvas-card');
+  const rootRect=root.getBoundingClientRect(),hostRect=host.getBoundingClientRect(),top=Math.max(0,rootRect.top-hostRect.top+host.scrollTop);rail.style.top=compact?'':top+'px';
+  const positions=[];for(const note of notes){let card=cards.get(note.id);if(!card){card=document.createElement('article');card.className='marginalia-entry';const anchor=document.createElement('button'),body=document.createElement('button');anchor.type=body.type='button';anchor.className='marginalia-anchor';body.className='marginalia-text';card.append(anchor,body);cards.set(note.id,card);rail.append(card);}
+   const anchor=card.firstElementChild,body=card.lastElementChild,quote=note.orphaned?'Original text removed':note.quote||'Margin note';if(anchor.textContent!==quote)anchor.textContent=quote;anchor.title=quote;anchor.onclick=()=>jump(note);if(body.textContent!==note.text)body.textContent=note.text;body.title=engine.isReadOnly()?'Margin note':'Edit margin note';body.onclick=()=>engine.isReadOnly()?jump(note):engine.editMarginNote(note.id);
+   let y=0;try{const at=Math.min(note.from,engine.source().length),range=engine.sourceRange(at,Math.min(engine.source().length,at+1)),bounds=range.getBoundingClientRect();if(bounds.height)y=bounds.top-rootRect.top;else{const block=root.children[engine.blockIndex(at)];y=block?.getBoundingClientRect().top-rootRect.top||0;}}catch{}y=Number.isFinite(y)?y:0;
+   card.hidden=!compact&&inline&&(y<-10||y>rootRect.height);if(!card.hidden)positions.push({card,y,from:note.from,height:card.offsetHeight});
+  }
+  if(compact){rail.style.height='';for(const [index,p]of positions.sort((a,b)=>a.from-b.from).entries()){p.card.style.top='';if(rail.children[index]!==p.card)rail.insertBefore(p.card,rail.children[index]||null);}return;}
+  let bottom=0;for(const p of marginaliaLayout(positions)){p.card.style.top=p.top+'px';bottom=Math.max(bottom,p.top+p.height);}rail.style.height=Math.max(inline?root.clientHeight:root.scrollHeight,inline?0:bottom+12)+'px';
+ }
+ const refresh=()=>{if(!disposed&&!frame)frame=requestAnimationFrame(paint);};engine.refreshMarginalia=refresh;
+ const resize=new ResizeObserver(refresh);resize.observe(host);resize.observe(root);const mutation=new MutationObserver(refresh);mutation.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','style','contenteditable']});root.addEventListener('scroll',refresh,{passive:true});host.addEventListener('scroll',refresh,{passive:true});refresh();
+ return ()=>{disposed=true;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();root.removeEventListener('scroll',refresh);host.removeEventListener('scroll',refresh);host.classList.remove('marginalia-host','marginalia-active','marginalia-compact');rail.remove();};
+}
+function mountSourceEditor(root,n,index,onChange){const editor=createSourceEditor(root,n,index,onChange);sourceEditors.set(root,editor);editor.disposeImageRows=wireImageRowInteractions(root,editor);editor.disposeMarginalia=wireMarginaliaRail(root,editor);return editor;}
 function smartUrlMarkdown(selected,candidate){
  if(!selected.trim()||/[\r\n]/.test(selected)||!/^https?:\/\/[^\s<>\\]+$/i.test(candidate))return null;
  let url;try{url=new URL(candidate);}catch{return null;}
@@ -2565,7 +2629,8 @@ function createSourceEditor(root,model,paneIndex,saveModel=changed){
  const imageHTML=(ref,alt,title)=>sourceMediaHTML(ref,alt,title,model),mathHTML=sourceMathHTML,wikiAttributes=label=>sourceWikiAttributes(label,model);
  const marker=e=>'<span class="md-marker">'+esc(e)+'</span>',preview=e=>'<span data-md-preview contenteditable="false">'+e+'</span>',codeCopyButton=()=>'<button type="button" class="code-copy" data-code-copy data-md-preview contenteditable="false" aria-label="Copy code" title="Copy code">'+icon('copy')+'</button>';
  const key=workspace().id+':'+model.id,historyState=sourceHistory.get(key)||{history:[],redo:[],kind:'',time:0};
- let editorSource=closeUnfinishedCodeFence(sourceForNote(model)),editorBlocks=[],editorLinks={},editorCursor={from:0,to:0},editorHistory=historyState.history,editorRedo=historyState.redo,editorLastKind=historyState.kind,editorLastTime=historyState.time,editorComposition=null,activeEditorElements=new Set(),nativeScrollbarGesture=false,mayFocus=true,suppressCaretReveal=false,justIndented=false,sourceSavedRange=null,disposed=false,menuState=null,lastMediaStamp='',readOnly=false;
+ const initialMargin=migrateLegacyMarginalia(closeUnfinishedCodeFence(sourceForNote(model)),model.marginalia);if(initialMargin.changed){rebaseTrashLinks(model,model.source,initialMargin.source);model.marginalia=initialMargin.notes;historyState.history.length=historyState.redo.length=0;historyState.kind='';}
+ let editorSource=initialMargin.source,editorBlocks=[],editorLinks={},editorCursor={from:0,to:0},editorHistory=historyState.history,editorRedo=historyState.redo,editorLastKind=historyState.kind,editorLastTime=historyState.time,editorComposition=null,activeEditorElements=new Set(),nativeScrollbarGesture=false,mayFocus=true,suppressCaretReveal=false,justIndented=false,sourceSavedRange=null,disposed=false,menuState=null,lastMediaStamp='',readOnly=false;
  const indentCols=s=>(s||'').replace(/\t/g,'    ').length;
  const blockIndentOf=b=>b?.token?.indent??indentCols(b?.source?.match(/^[ \t]*/)?.[0]);
  function stripIndentCols(line,cols){let i=0,c=0;while(i<line.length&&c<cols){if(line[i]==='\t')c+=4;else if(line[i]===' ')c+=1;else break;i++;}return line.slice(i);}
@@ -3241,6 +3306,7 @@ function editorFrame() {
     imageAlignments: clone(note(editing).imageAlignments || {}),
     imageRows: clone(note(editing).imageRows || {}),
     imageWraps: clone(note(editing).imageWraps || {}),
+    marginalia: clone(note(editing).marginalia || []),
     pdfEmbeds: clone(note(editing).pdfEmbeds || {}),
     foldedSections: clone(note(editing).foldedSections || [])
   };
@@ -3455,7 +3521,7 @@ function captureNativeEditorInput(e) {
   a.source = i;
   for (let e = n + 1; e < editorBlocks.length; e++) editorBlocks[e].start += i.length - s;
   const l = editorOffset(t.anchorNode, t.anchorOffset);
-  if (editorComposition || e.isComposing) return editorComposition ||= editorFrame(), editorSource = r, editorCursor = {
+  if (editorComposition || e.isComposing) return editorComposition ||= editorFrame(), model.marginalia&&(model.marginalia=rebaseMarginNotes(model.marginalia,editorSource,r)), editorSource = r, editorCursor = {
     from: l,
     to: l
   }, void syncEditor();
@@ -3766,7 +3832,7 @@ function renderEditor(e = editorCursor, t) {
 function recordEditorFrame(e, t = editorFrame(), o = !1) {
   const n = textDifference(e.source, t.source),
     a = {};
-  for (const o of ["imageWidths", "imageCaptions", "imageNames", "imageAlignments", "imageRows", "imageWraps", "pdfEmbeds", "foldedSections"]) same(e[o], t[o]) || (a[o] = {
+  for (const o of ["imageWidths", "imageCaptions", "imageNames", "imageAlignments", "imageRows", "imageWraps", "pdfEmbeds", "foldedSections", "marginalia"]) same(e[o], t[o]) || (a[o] = {
     before: e[o],
     after: t[o]
   });
@@ -3795,10 +3861,12 @@ function applyEditorSource(e, t, o = "action", editHint = null) {
     a = editorSource;
   if (e !== a) {
     const a = editorFrame();
+    if(model.marginalia)model.marginalia=rebaseMarginNotes(model.marginalia,editorSource,e);
     editorSource = e, recordEditorFrame(a, {
       ...a,
       source: e,
-      cursor: t
+      cursor: t,
+      marginalia:clone(model.marginalia||[])
     }, ("typing" === o && editorLastKind === o && n - editorLastTime < 650)||(o==='paste-choice'&&editorLastKind==='paste')), editorLastKind = o, editorLastTime = n;
   }
   renderEditor(t, a), syncEditor(), updateSlash();
@@ -3815,8 +3883,9 @@ function undoEditor(e = !1) {
     i = e ? n.steps : [...n.steps].reverse();
   let s = editorCursor;
   for (const t of i) {
-    const o = t.text;
+    const o = t.text,previous=editorSource;
     editorSource = editorSource.slice(0, o.start) + (e ? o.inserted : o.removed) + editorSource.slice(o.start + (e ? o.removed.length : o.inserted.length));
+    if(model.marginalia&&!Object.hasOwn(t.changes,'marginalia'))model.marginalia=rebaseMarginNotes(model.marginalia,previous,editorSource);
     for (const [o, n] of Object.entries(t.changes)) note(editing)[o] = clone(e ? n.after : n.before);
     s = e ? t.afterCursor : t.beforeCursor;
   }
@@ -4012,11 +4081,11 @@ function growMarkdownTable(block, axis) {
   root.setAttribute('aria-readonly',String(enabled));root.tabIndex=0;
   syncReadingControls();
  }
- function mediaStamp(){return JSON.stringify([model.imageWidths,model.imageAlignments,model.imageRows,model.imageWraps,model.pdfEmbeds,model.imageNames,model.imageCaptions,model.foldedSections,model.foldedCode]);}
+ function mediaStamp(){return JSON.stringify([model.imageWidths,model.imageAlignments,model.imageRows,model.imageWraps,model.pdfEmbeds,model.imageNames,model.imageCaptions,model.foldedSections,model.foldedCode,model.marginalia]);}
  let htmlRenderTimer=0,lastRenderedSource=null,lastRenderedStamp='';
  function flushHTML(){clearTimeout(htmlRenderTimer);htmlRenderTimer=0;if(pendingSourceHTML.get(model)!==flushHTML)return;pendingSourceHTML.delete(model);if(model.source!==editorSource)return;const stamp=mediaStamp();if(lastRenderedSource===editorSource&&lastRenderedStamp===stamp)return;model.html=renderSourceHTML(editorSource,model);model.sourceHtmlHash=sourceHash(model.html);rememberSourceNote(model);lastRenderedSource=editorSource;lastRenderedStamp=stamp;scheduleStatus();}
  function scheduleHTML(){clearTimeout(htmlRenderTimer);pendingSourceHTML.set(model,flushHTML);htmlRenderTimer=setTimeout(flushHTML,editorSource.length>150000?400:160);}
- function syncEditor(){if(disposed)return;rebaseTrashLinks(model,model.source,editorSource);model.source=editorSource;model.updated=Date.now();rememberSourceNote(model);lastMediaStamp=mediaStamp();sourceHistoryPush();scheduleHTML();saveModel(model);for(const other of $$('.editor')){const engine=sourceEditors.get(other);if(other!==root&&engine?.model===model)engine.receive(editorSource);}if(typeof scheduleDocumentTools==='function')scheduleDocumentTools(root); }
+ function syncEditor(){if(disposed)return;rebaseTrashLinks(model,model.source,editorSource);model.source=editorSource;model.updated=Date.now();rememberSourceNote(model);lastMediaStamp=mediaStamp();sourceHistoryPush();scheduleHTML();saveModel(model);for(const other of $$('.editor')){const engine=sourceEditors.get(other);if(other!==root&&engine?.model===model)engine.receive(editorSource);}sourceEditors.get(root)?.refreshMarginalia?.();if(typeof scheduleDocumentTools==='function')scheduleDocumentTools(root); }
  let caretFrame=0;
  function revealCaret(){if(caretFrame)return;caretFrame=requestAnimationFrame(()=>{caretFrame=0;if(disposed||suppressCaretReveal||document.activeElement!==root)return;const s=getSelection();if(!s.rangeCount||!root.contains(s.anchorNode))return;const range=s.getRangeAt(0).cloneRange();range.collapse(false);let r=range.getBoundingClientRect();if(!r.height){const block=(s.anchorNode.nodeType===1?s.anchorNode:s.anchorNode.parentElement)?.closest('[data-md-block]');r=block?.getBoundingClientRect()||r;}const viewport=root.closest('.document-scroll,.scratchpad-scroll');if(!viewport||!r.height)return;const bounds=viewport.getBoundingClientRect();if(r.bottom>bounds.bottom-28)viewport.scrollTop+=r.bottom-bounds.bottom+28;else if(r.top<bounds.top+12)viewport.scrollTop-=bounds.top+12-r.top;});}
  function rememberRange(){const s=getSelection();if(editorComposition||document.activeElement?.matches('input[data-task-pos],.checklist-filter-toggle')||!root.contains(s.anchorNode)||!root.contains(s.focusNode))return {...editorCursor};const next=editorSelection();if(next.from!==editorCursor.from||next.to!==editorCursor.to){editorLastKind='';historyState.kind='';}editorCursor=next;sourceSavedRange={...next};activateEditorBlocks(next);return {...next};}
@@ -4295,11 +4364,12 @@ function growMarkdownTable(block, axis) {
   if(rest.length>=2){const refs=rest.map(m=>m.dataset.imageRef||'cnvx:'+m.dataset.asset);model.imageRows??={};model.imageRows[imageRowKey(refs)]=rowLayoutFromDOM(item.block,rest);}
   else if(rest.length===1){const remaining=rest[0],p=rowLayoutFromDOM(item.block,rest).positions[0],ref=remaining.dataset.imageRef||'cnvx:'+remaining.dataset.asset;model.imageWidths??={};model.imageAlignments??={};model.imageWidths[ref]=Math.round(p.width*width);model.imageAlignments[ref]=p.left<.2?'left':p.left+p.width>.8?'right':'center';}
  }
- function commitImageEdit(edits,mutate,cursor=editorCursor.from){
+ function commitImageEdit(edits,mutate,cursor=editorCursor.from,marginTransform=null){
   if(readOnly)return;
   sourceHistoryPull();const before=editorFrame();
   mutate();
-  for(const edit of [...edits].sort((a,b)=>b.from-a.from))editorSource=editorSource.slice(0,edit.from)+edit.text+editorSource.slice(edit.to);
+  for(const edit of [...edits].sort((a,b)=>b.from-a.from)){const previous=editorSource;editorSource=editorSource.slice(0,edit.from)+edit.text+editorSource.slice(edit.to);if(model.marginalia&&!marginTransform)model.marginalia=rebaseMarginNotes(model.marginalia,previous,editorSource);}
+  if(model.marginalia&&marginTransform)model.marginalia=marginTransform(before.marginalia);
   editorCursor={from:Math.max(0,Math.min(cursor,editorSource.length)),to:Math.max(0,Math.min(cursor,editorSource.length))};
   recordEditorFrame(before);editorLastKind='';suppressCaretReveal=true;
   try{renderEditor(editorCursor);syncEditor();hideSlash();}finally{suppressCaretReveal=false;}
@@ -4328,7 +4398,7 @@ function growMarkdownTable(block, axis) {
   for(const block of root.children){
    if(!block.matches('.md-paragraph:not(.md-blank):not(.section-hidden)'))continue;
    const spec=editorBlocks[+block.dataset.mdBlock];if(!spec||imageRowMembers(block).length||block.querySelector('[data-md-preview] .media:not([data-kind=image])'))continue;
-   const rect=block.getBoundingClientRect();if(y>=rect.top&&y<=rect.bottom&&rect.width>=155&&spec.source.replace(/!?\[[^\]]*\]\([^)]*\)/g,'').trim())return block;
+   const rect=block.getBoundingClientRect();if(y>=rect.top&&y<=rect.bottom&&rect.width>=260&&spec.source.replace(/!?\[[^\]]*\]\([^)]*\)/g,'').trim())return block;
   }
   return null;
  }
@@ -4356,13 +4426,13 @@ function growMarkdownTable(block, axis) {
    let to=item.to;if(next[to]===' '&&next.slice(item.from,to)===item.raw)to++;
    next=next.slice(0,item.from)+next.slice(to);if(at>=to)at-=to-item.from;else if(at>item.from)at=item.from;
   }
-  at=Math.max(0,Math.min(next.length,at));const lead=at>0&&!/\s/.test(next[at-1])?' ':'',tail=at<next.length&&!/\s/.test(next[at])?' ':'';next=next.slice(0,at)+lead+item.raw+tail+next.slice(at);
+  at=Math.max(0,Math.min(next.length,at));const original=editorSource,withoutImage=next,lead=at>0&&!/\s/.test(next[at-1])?' ':'',tail=at<next.length&&!/\s/.test(next[at])?' ':'';next=next.slice(0,at)+lead+item.raw+tail+next.slice(at);
   const width=Math.round((block.getBoundingClientRect().width||root.clientWidth||700)*wrap.width);
   commitImageEdit([{from:0,to:editorSource.length,text:next}],()=>{
    if(drag)preserveRemainingImages(item);
    model.imageWraps??={};model.imageWidths??={};model.imageAlignments??={};
    model.imageWraps[item.ref]={...wrap};model.imageWidths[item.ref]=Math.max(100,width);model.imageAlignments[item.ref]=wrap.side;
-  },at+lead.length+item.raw.length+tail.length);return true;
+  },at+lead.length+item.raw.length+tail.length,rows=>rebaseMarginNotes(rebaseMarginNotes(rows,original,withoutImage),withoutImage,next));return true;
  }
  function imageDropBoundary(x,y){
   const bounds=root.getBoundingClientRect(),blocks=[...root.children].map(element=>({element,spec:editorBlocks[+element.dataset.mdBlock],rect:element.getBoundingClientRect()})).filter(row=>row.spec&&!row.element.classList.contains('section-hidden')&&row.rect.bottom>row.rect.top);
@@ -4399,7 +4469,7 @@ function growMarkdownTable(block, axis) {
   const item=imageItem(media),wrap=item&&model.imageWraps?.[item.ref];if(!item||!validImageTextWrap(wrap))return false;
   if(readOnly)return true;event.preventDefault();const wrapper=media.closest('.md-image-inline'),width=item.block.getBoundingClientRect().width||root.clientWidth||700,start=event.clientX,source=editorSource;
   let next={...wrap};
-  const move=e=>{const diff=(e.clientX-start)/width;next={...wrap,width:Math.max(.08,Math.min(.72,.9-wrap.offset,wrap.width+diff))};applyImageTextWrap(wrapper,next);positionMediaTools(media);};
+  const move=e=>{const diff=(e.clientX-start)/width;next={...wrap,width:Math.max(.08,Math.min(imageWrapLimit(width),.86-wrap.offset,1-138/width-wrap.offset,wrap.width+diff))};applyImageTextWrap(wrapper,next);positionMediaTools(media);};
   const stop=cancel=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);document.removeEventListener('pointercancel',cancelled);document.removeEventListener('keydown',escape,true);if(cancel||disposed||source!==editorSource){if(wrapper.isConnected)applyImageTextWrap(wrapper,wrap);return;}commitImageEdit([],()=>{model.imageWraps[item.ref]=next;model.imageWidths??={};model.imageWidths[item.ref]=Math.round(next.width*width);});};
   const up=()=>stop(false),cancelled=()=>stop(true),escape=e=>{if(e.key==='Escape')stop(true);};document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);document.addEventListener('pointercancel',cancelled);document.addEventListener('keydown',escape,true);return true;
  }
@@ -4664,7 +4734,7 @@ function growMarkdownTable(block, axis) {
  root.addEventListener('click',e=>{const fold=e.target.closest('.code-fold');if(fold){e.preventDefault();e.stopImmediatePropagation();toggleCodeFold(fold);return;}const button=e.target.closest('[data-code-copy]');if(button){e.preventDefault();e.stopImmediatePropagation();const block=editorBlocks[+button.closest('[data-md-block]').dataset.mdBlock];if(block?.token.type==='code')copyCodeText(block.token.text,button);return;}const section=e.target.closest('[data-section-toggle]'),grow=e.target.closest('[data-table-grow]');if(!section&&!grow)return;e.preventDefault();e.stopImmediatePropagation();if(section)toggleSection(section);else growTable(grow);},true);
 
  mayFocus=false;renderEditor({from:0,to:0});mayFocus=true;model.source=editorSource;rememberSourceNote(model);scheduleHTML();
- const api={root,model,historyKey:key,remember:rememberRange,setSelection:selection=>{mayFocus=true;setEditorSelection(selection);},selection:editorSelection,source:()=>editorSource,replace:(text,selection)=>replaceEditorText(text,selection||sourceSavedRange||editorSelection()),insertHTML:html=>replaceEditorText(htmlToSource(html,model),sourceSavedRange||editorSelection()),command,onKey,onPaste,quietLinkRange,save:snapshotMedia,undo:redo=>undoEditor(redo),editEquation,removeMedia,setCaption,sourceRange,revealMatch,replaceMatches,documentHeadings,jumpToHeading,reorderSection,setReadOnly,isReadOnly:()=>readOnly,blockIndex:editorBlockAt,imageItem,placeImages,imageDropBoundary,separateImage,alignRowImage,equalImages,resizeImageRow,contextTable,editTableCells,chooseMenu,showMenu:updateSlash,focus:end=>setEditorSelection({from:end?editorSource.length:0,to:end?editorSource.length:0}),checkTask,receive:(source,record=false)=>{const metadataChanged=lastMediaStamp!==mediaStamp();if(source===editorSource&&!metadataChanged)return;if(record&&source!==editorSource){sourceHistoryPull();const before=editorFrame();recordEditorFrame(before,{...before,source});editorLastKind='';sourceHistoryPush();}const previous=editorSource;editorSource=source;mayFocus=false;renderEditor(editorCursor,metadataChanged?undefined:previous);mayFocus=true;},dispose:()=>{if(pendingSourceHTML.get(model)===flushHTML)flushHTML();clearTimeout(htmlRenderTimer);cancelAnimationFrame(caretFrame);disposed=true;api.disposeImageRows?.();if(typeof disposeDocumentTools==='function')disposeDocumentTools(root);
+ const api={root,model,historyKey:key,remember:rememberRange,setSelection:selection=>{mayFocus=true;setEditorSelection(selection);},selection:editorSelection,source:()=>editorSource,replace:(text,selection)=>replaceEditorText(text,selection||sourceSavedRange||editorSelection()),insertHTML:html=>replaceEditorText(htmlToSource(html,model),sourceSavedRange||editorSelection()),command,onKey,onPaste,quietLinkRange,save:snapshotMedia,undo:redo=>undoEditor(redo),editEquation,removeMedia,setCaption,sourceRange,revealMatch,replaceMatches,documentHeadings,jumpToHeading,reorderSection,setReadOnly,isReadOnly:()=>readOnly,blockIndex:editorBlockAt,imageItem,placeImages,imageDropBoundary,separateImage,alignRowImage,equalImages,resizeImageRow,contextTable,editTableCells,chooseMenu,showMenu:updateSlash,focus:end=>setEditorSelection({from:end?editorSource.length:0,to:end?editorSource.length:0}),checkTask,receive:(source,record=false)=>{const metadataChanged=lastMediaStamp!==mediaStamp();if(source===editorSource&&!metadataChanged)return;if(record&&source!==editorSource){sourceHistoryPull();const before=editorFrame();recordEditorFrame(before,{...before,source});editorLastKind='';sourceHistoryPush();}const previous=editorSource;editorSource=source;mayFocus=false;renderEditor(editorCursor,metadataChanged?undefined:previous);mayFocus=true;api.refreshMarginalia?.();},dispose:()=>{if(pendingSourceHTML.get(model)===flushHTML)flushHTML();clearTimeout(htmlRenderTimer);cancelAnimationFrame(caretFrame);disposed=true;api.disposeImageRows?.();api.disposeMarginalia?.();if(typeof disposeDocumentTools==='function')disposeDocumentTools(root);
  if(savedEditorAnchor?.engine===api)savedEditorAnchor=null;
  for(const name of ['savedRange','mediaRange','slashRange']){const range=name==='savedRange'?savedRange:name==='mediaRange'?mediaRange:slashRange;if(range&&root.contains(range.startContainer)){if(name==='savedRange')savedRange=null;else if(name==='mediaRange')mediaRange=null;else slashRange=null;}}
  clearPasteChoice();sourceEditors.delete(root);delete root._sourceModel;
@@ -4675,18 +4745,20 @@ function growMarkdownTable(block, axis) {
   cancelAnimationFrame(caretFrame);caretFrame=0;suppressCaretReveal=true;
   try{command(value);}finally{suppressCaretReveal=previous;if(scroll){scroll.scrollTop=top;scroll.scrollLeft=left;}}
  };
+ function commitMarginNotes(update){if(readOnly||disposed)return;sourceHistoryPull();const before=editorFrame();model.marginalia=update(marginNotes(model.marginalia));recordEditorFrame(before);editorLastKind='';syncEditor();api.refreshMarginalia?.();}
+ api.editMarginNote=id=>{const note=marginNotes(model.marginalia).find(row=>row.id===id);if(!note||readOnly||disposed)return;const dialog=showDialog('Margin note','<label for="margin-note-text">Annotation</label><textarea id="margin-note-text" name="annotation" rows="4" maxlength="1200" required>'+esc(note.text)+'</textarea><button type="button" data-remove-margin class="danger">Remove annotation</button>',form=>{const text=String(form.get('annotation')||'').trim();if(!text||disposed||readOnly)return;dialog.close();commitMarginNotes(rows=>rows.map(row=>row.id===id?{...row,text}:row));},'Save');$('[data-remove-margin]',dialog).onclick=()=>{dialog.close();commitMarginNotes(rows=>rows.filter(row=>row.id!==id));};};
  api.addMarginNote=(target=null)=>{
   if(readOnly||disposed)return;
   if(target&&!root.contains(target))return;
   const element=target?.closest('[data-md-block]'),index=element?.parentElement===root?Number(element.dataset.mdBlock):editorBlockAt(editorSelection().from);
-  const original=editorSource,block=editorBlocks[index],at=block?.start??editorSource.length;
+  const original=editorSource,block=editorBlocks[index],selection=editorSelection(),from=!target&&selection.from<selection.to?selection.from:block?.start??editorSource.length,to=!target&&selection.from<selection.to?selection.to:Math.min(original.length,(block?.start??original.length)+(block?.source.length??0));
   showDialog('Margin note','<label for="margin-note-text">Annotation</label><textarea id="margin-note-text" name="annotation" rows="3" maxlength="1200" placeholder="A thought, reference, or reminder…" required></textarea>',form=>{
-   const text=String(form.get('annotation')||'').trim().replace(/\s*\n\s*/g,' ');if(!text)return;
+   const text=String(form.get('annotation')||'').trim();if(!text)return;
    if(disposed||readOnly||original!==editorSource){flash('The note changed. Please try again.');return;}
-   $('#dialog').close();const prefix=at>0&&!original.slice(0,at).endsWith('\n')?'\n':'';
-   replaceEditorText(prefix+'> [!margin] '+text+'\n\n',{from:at,to:at});
+   $('#dialog').close();commitMarginNotes(rows=>[...rows,{id:uid(),from,to,text,quote:original.slice(from,to).trim().slice(0,240)}]);
   },'Add');
  };
+ if(initialMargin.changed)queueMicrotask(()=>{if(!disposed)syncEditor();});
  api.checklistText=target=>{
   const line=target.closest('.md-task-line'),input=line&&$('input[data-task-pos]',line),block=input?.closest('[data-md-block]');if(!input||!block)return '';
   const position=+input.dataset.taskPos+editorBlocks[+block.dataset.mdBlock].start-(+block.dataset.mdSourceStart||0);
@@ -4733,7 +4805,7 @@ function rewriteImportedMedia(source,mediaRefs){
  }
  return rewriteMarkdownDestinations(source,edits);
 }
-function remapSourceMetadata(note,assets={},notes={}){const ref=s=>s.replace(/^(?:cnvx|asset):([\w-]+)$/,(all,id)=>'cnvx:'+(Object.hasOwn(assets,id)?assets[id]:id)),result={};if(typeof note.source==='string')result.source=rewriteMarkdownReferences(note.source,(all,scheme,id)=>scheme==='note'?(Object.hasOwn(notes,id)?'note:'+notes[id]:all):ref(all));for(const field of ['imageWidths','imageCaptions','imageNames','imageAlignments','pdfEmbeds'])if(note[field])result[field]=Object.fromEntries(Object.entries(note[field]).map(([key,value])=>[ref(key),structuredClone(value)]));if(note.imageWraps){const entries=Object.entries(note.imageWraps).filter(([key,value])=>/^(?:cnvx|asset):[\w-]+$/.test(key)&&validImageTextWrap(value));if(entries.length)result.imageWraps=Object.fromEntries(entries.map(([key,value])=>[ref(key),{side:value.side,width:value.width,offset:value.offset}]));}if(note.imageRows){result.imageRows={};for(const [key,value]of Object.entries(note.imageRows)){try{const refs=JSON.parse(key);if(Array.isArray(refs)&&refs.every(s=>typeof s==='string')&&validImageRowLayout(value,refs.length))result.imageRows[imageRowKey(refs.map(ref))]=structuredClone(value);}catch{}}}if(note.foldedSections)result.foldedSections=structuredClone(note.foldedSections);if(Array.isArray(note.foldedCode))result.foldedCode=note.foldedCode.filter(key=>typeof key==='string'&&/^[a-z0-9]+:\d+:\d+$/.test(key));return result;}
+function remapSourceMetadata(note,assets={},notes={}){const ref=s=>s.replace(/^(?:cnvx|asset):([\w-]+)$/,(all,id)=>'cnvx:'+(Object.hasOwn(assets,id)?assets[id]:id)),result={};if(typeof note.source==='string')result.source=rewriteMarkdownReferences(note.source,(all,scheme,id)=>scheme==='note'?(Object.hasOwn(notes,id)?'note:'+notes[id]:all):ref(all));for(const field of ['imageWidths','imageCaptions','imageNames','imageAlignments','pdfEmbeds'])if(note[field])result[field]=Object.fromEntries(Object.entries(note[field]).map(([key,value])=>[ref(key),structuredClone(value)]));if(note.imageWraps){const entries=Object.entries(note.imageWraps).filter(([key,value])=>/^(?:cnvx|asset):[\w-]+$/.test(key)&&validImageTextWrap(value));if(entries.length)result.imageWraps=Object.fromEntries(entries.map(([key,value])=>[ref(key),{side:value.side,width:value.width,offset:value.offset}]));}if(note.imageRows){result.imageRows={};for(const [key,value]of Object.entries(note.imageRows)){try{const refs=JSON.parse(key);if(Array.isArray(refs)&&refs.every(s=>typeof s==='string')&&validImageRowLayout(value,refs.length))result.imageRows[imageRowKey(refs.map(ref))]=structuredClone(value);}catch{}}}if(note.foldedSections)result.foldedSections=structuredClone(note.foldedSections);if(Array.isArray(note.foldedCode))result.foldedCode=note.foldedCode.filter(key=>typeof key==='string'&&/^[a-z0-9]+:\d+:\d+$/.test(key));if(Array.isArray(note.marginalia)){const rows=marginNotes(note.marginalia).map(row=>({id:row.id,from:row.from,to:row.to,text:row.text,quote:typeof row.quote==='string'?row.quote:'',orphaned:row.orphaned===true}));result.marginalia=typeof note.source==='string'&&typeof result.source==='string'?rebaseMarginNotes(rows,note.source,result.source):rows;}return result;}
 
 function normalizeSourceEmbeds(source){
  source=normalizeLiteralCodeFences(source).source;
@@ -4768,7 +4840,7 @@ async function resolvePortableMarkdown(text,pending){
  return rewriteMarkdownReferences(text,(ref,scheme,id)=>scheme==='note'?ref:urls.get(id)||ref);
 }
 async function exportSourceMarkdown(note,attachmentPaths=null,relativePrefix=''){
- const source=sourceForNote(note);
+ const source=markdownWithMarginalia(sourceForNote(note),note.marginalia);
  const {text,pending}=portableMarkdown(source,workspace().assets,0,source.length,attachmentPaths,relativePrefix);
  return pending.size?resolvePortableMarkdown(text,pending):text;
 }
@@ -7236,6 +7308,7 @@ function restoreCanvasText(w,n,item,state){
  if(state.formatting)item.formatting=state.formatting;else delete item.formatting;
  if(model){
   Object.assign(model,structuredClone(state.formatting||{}));
+  model.source=item.text;
   setSourceNote(model,item.text);
  }
  commitCanvas(w,n,item);return true;
@@ -8600,7 +8673,7 @@ function mountCanvas(view){
     const asset=w.assets[media.dataset.asset];
     if(!asset?.mime?.startsWith('image/')){media.replaceWith(asset?.name||'Attachment');continue;}
     const image=document.createElement('img');image.alt=media.dataset.imageAlt||asset.name;image.dataset.asset=asset.id;
-    const wrap=imageTextWrapFromMedia(media);if(wrap){image.style.float=wrap.side;image.style.width=wrap.width*100+'%';image.style.marginLeft=wrap.side==='left'?wrap.offset*100+'%':'8px';image.style.marginRight=wrap.side==='right'?wrap.offset*100+'%':'8px';image.style.marginBottom='6px';}
+    const wrap=imageTextWrapFromMedia(media);if(wrap){image.style.float=wrap.side;image.style.width=wrap.width*100+'%';const gaps=imageTextWrapGaps(wrap);image.style.marginLeft=gaps.left;image.style.marginRight=gaps.right;image.style.marginBottom='14px';}
     media.replaceWith(image);images.push(canvasImage(image,asset));
    }
    if(images.length){
@@ -9166,6 +9239,7 @@ function extractNoteSelection(engine,range){
  const w=workspace(),owner=selectionExtractionOwner(engine,w),source=engine.source(),text=source.slice(range.from,range.to);
  if(!owner||!text.trim())return;
  const formatting=remapSourceMetadata(engine.model);delete formatting.source;
+ if(formatting.marginalia)formatting.marginalia=formatting.marginalia.filter(row=>row.from>=range.from&&row.to<=range.to).map(row=>({...row,from:row.from-range.from,to:row.to-range.from}));
  askName('Extract to new note',suggestedNoteTitle(text),name=>{
   if(workspace()!==w||selectionExtractionOwner(engine,w)!==owner||engine.source()!==source){flash('The note changed. Try again.');return;}
   const note=createStandaloneSourceNote(w,owner.folder,name,text,formatting),leading=text.match(/^\n+/)?.[0]||'',trailing=text.match(/\n+$/)?.[0]||'';engine.replace(leading+workspaceNoteLink(note,owner,owner!==engine.model||owner.ephemeral===true)+trailing,range);renderTree();flash('Selection extracted to '+note.title);
@@ -9818,12 +9892,13 @@ async function exportWorkspace(){flushPendingNoteHTML();const current=workspace(
 function exportDialog(ids){const notes=ids.map(noteBy).filter(Boolean);if(!notes.length){flash('No files to export.');return;}if(notes.length===1&&isMediaFile(notes[0])){const a=workspace().assets[notes[0].asset];if(a)void downloadAttachment(a);return;}if(notes.every(isCanvasFile)){void exportNotes(notes,'cnvs').catch(error=>flash(error.message||'Could not export the canvas.'));return;}showDialog('Export '+(notes.length===1?'note':notes.length+' files'),'<label for="export-format">Format</label><select id="export-format" name="format"><option value="note">Note file (.note) — editable, includes attachments</option><option value="md">Markdown (.md)</option><option value="html">HTML (.html) — formatted, includes attachments</option><option value="txt">Plain text (.txt)</option></select><p>'+(notes.length>1?'Notes download together in one ZIP, preserving their folder paths. Markdown attachments are included in an assets folder.':'Each file downloads with its title. The .note format preserves all editing details.')+'</p>',async data=>{$('#dialog').close();await exportNotes(notes,data.get('format'));},'Export');}
 async function readableHTML(n){
  const root=document.createElement('div');root.innerHTML=safeHTML(n.html);renderMathWidgets(root);
+ if(marginNotes(n.marginalia).length){const aside=document.createElement('aside'),heading=document.createElement('h2');heading.textContent='Margin notes';aside.append(heading);for(const note of marginNotes(n.marginalia)){const section=document.createElement('section'),quote=document.createElement('small'),text=document.createElement('p');quote.textContent=note.quote||'Margin note';text.textContent=note.text;section.append(quote,text);aside.append(section);}root.append(aside);}
  for(const m of $$('.media',root)){
   const a=workspace().assets[m.dataset.asset];if(!a)continue;const d=document.createElement('div');
   if(a.mime.startsWith('image/')){
    d.style.cssText=m.style.cssText;d.style.maxWidth='100%';
    const wrap=imageTextWrapFromMedia(m);
-   if(wrap){d.style.float=wrap.side;d.style.width=wrap.width*100+'%';d.style.marginBottom='0.7em';d.style.marginLeft=wrap.side==='left'?wrap.offset*100+'%':'12px';d.style.marginRight=wrap.side==='right'?wrap.offset*100+'%':'12px';}
+   if(wrap){d.style.float=wrap.side;d.style.width=wrap.width*100+'%';const gaps=imageTextWrapGaps(wrap);d.style.marginBottom='14px';d.style.marginLeft=gaps.left;d.style.marginRight=gaps.right;}
    else if(!m.closest('.image-row-export')){d.style.width=Number(m.dataset.width||650)+'px';if(['center','right'].includes(m.dataset.align))d.style.marginLeft='auto';if(m.dataset.align==='center')d.style.marginRight='auto';}
    const ratio=+m.dataset.rowRatio,frame=Number.isFinite(ratio)&&ratio>0?'aspect-ratio:'+ratio+';object-fit:contain;':'';
    const url=await displayAttachmentDataURL(a);d.innerHTML='<img style="display:block;width:100%;height:auto;'+frame+'" src="'+esc(url)+'" alt="'+esc(m.dataset.imageAlt||a.name)+'">'+(m.dataset.imageCaption?'<figcaption>'+esc(m.dataset.imageCaption)+'</figcaption>':'');
@@ -9866,7 +9941,7 @@ async function exportNotes(notes,type){
   else if(type==='md'){
    const relativePrefix='../'.repeat((name.match(/\//g)||[]).length);
    text='<!-- workspace-note-id: '+n.id+' -->\n# '+n.title+'\n\n'+await exportSourceMarkdown(n,attachmentPaths,relativePrefix);
-  }else text=type==='txt'?n.title+'\n\n'+plainText(n.html):await readableHTML(n);
+  }else text=type==='txt'?n.title+'\n\n'+plainText(n.html)+marginNotes(n.marginalia).map(row=>'\n\nMargin note — '+(row.quote?row.quote+'\n':'')+row.text).join(''):await readableHTML(n);
   files.push({name,data:new TextEncoder().encode(text)});
  }
  if(!files.length){flash('No files to export.');return;}
