@@ -55,21 +55,42 @@ test('rendered markdown tables keep native table layout and subtle cell borders'
 test('image wrapping supports wider images, edge snapping and flexible offsets', () => {
   const ctx=vm.createContext({});vm.runInContext(section('function validImageTextWrap(', 'const IMAGE_ROW_LIMIT='),ctx);
   const left=ctx.imageWrapAt(1000,700,100),right=ctx.imageWrapAt(1000,200,600),edge=ctx.imageWrapAt(1000,700,200,true);
-  assert.equal(left.width,.7);assert.equal(left.side,'left');assert.equal(right.side,'right');assert.ok(Math.abs(right.offset-.2)<1e-8);assert.equal(edge.offset,0);assert.equal(ctx.validImageTextWrap({side:'left',width:.7,offset:.19}),true);assert.equal(ctx.validImageTextWrap({side:'left',width:.7,offset:.21}),false);
+  assert.equal(left.width,.66);assert.equal(left.side,'left');assert.equal(right.side,'right');assert.ok(Math.abs(right.offset-.2)<1e-8);assert.equal(edge.offset,0);assert.equal(ctx.validImageTextWrap({side:'left',width:.7,offset:.19}),true);assert.equal(ctx.validImageTextWrap({side:'left',width:.7,offset:.21}),false);
+  const small=ctx.imageWrapAt(300,500,0);assert.ok(300*small.width<=150);assert.match(ctx.imageTextWrapStyle(edge),/max\(12px, 0%\)/);assert.match(ctx.imageTextWrapStyle(edge),/18px/);
+  assert.equal(ctx.imageWrapAt(1000,200,410,false,'left').side,'left');assert.equal(ctx.imageWrapAt(1000,200,470,false,'left').side,'right');
 });
 
 test('live wrap drag shows a real temporary image in text and commits only on drop', async () => {
-  const handlers={},target={nodeType:1,isConnected:true,contains:()=>true,getBoundingClientRect:()=>({left:0,width:800,top:0,bottom:400}),normalize(){}},wrapper={style:{cssText:'width:25%'},isConnected:true};let figure=null,commits=0,source='Original source';
-  function element(tag){return {tag,style:{},dataset:{},children:[],append(el){this.children.push(el);},setAttribute(){},remove(){if(figure===this)figure=null;}};}
+  const classes=new Set(),handlers={},target={nodeType:1,isConnected:true,contains:()=>true,getBoundingClientRect:()=>({left:0,width:800,top:0,bottom:400}),normalize(){}},wrapper={style:{cssText:'width:25%'},isConnected:true,classList:{add:key=>classes.add(key),remove:(...keys)=>keys.forEach(key=>classes.delete(key)),toggle:(key,on)=>on?classes.add(key):classes.delete(key)}};let figure=null,commits=0,source='Original source',anchors=0;
+  function element(tag){return {tag,style:{},dataset:{},children:[],append(el){this.children.push(el);},setAttribute(){},remove(){if(figure===this)figure=null;this.parentNode=null;this.isConnected=false;}};}
   const media={querySelector:q=>q==='img'?{src:'blob:test',naturalWidth:400,naturalHeight:200}:null,closest:()=>wrapper};
   const root={closest:()=>null,contains:()=>true,classList:{remove(){}},addEventListener:(event,fn)=>handlers[event]=fn,removeEventListener(){}};
-  const engine={model:{},isReadOnly:()=>false,source:()=>source,imageWrapTarget:()=>target,imageWrapAnchor:()=>7,sourceRange:()=>({startContainer:target,insertNode(el){figure=el;el.parentNode=target;}}),wrapImage(_drag,block,wrap,_incoming,at){commits++;assert.equal(block,target);assert.equal(at,7);assert.ok(wrap.width>0);}};
-  const ctx=vm.createContext({root,engine,drag:{engine,item:{media},width:200,height:100,grabOffset:50,source},document:{createElement:element,body:{append(){throw Error('No floating gray overlay should appear');}},addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},URL:{revokeObjectURL(){}}});
+  const engine={model:{},isReadOnly:()=>false,source:()=>source,imageWrapTarget:()=>target,imageWrapAnchor:()=>{anchors++;return 7;},sourceRange:()=>({startContainer:target,insertNode(el){figure=el;el.parentNode=target;el.isConnected=true;}}),wrapImage(_drag,block,wrap,_incoming,at){commits++;assert.equal(block,target);assert.equal(at,7);assert.ok(wrap.width>0);}};
+  const ctx=vm.createContext({root,engine,drag:{engine,item:{media,block:target},width:200,height:100,grabOffset:50,source},getComputedStyle:()=>({lineHeight:'24px'}),document:{createElement:element,body:{append(){throw Error('No floating gray overlay should appear');}},addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},URL:{revokeObjectURL(){}}});
   vm.runInContext(section('function validImageTextWrap(', 'const IMAGE_ROW_LIMIT=')+section('let imageRowDrag=null;', 'function sourceImageRowHTML(')+'\nimageRowDrag=drag;wireImageRowInteractions(root,engine);',ctx);
   const event={target,clientX:120,clientY:70,shiftKey:false,dataTransfer:{items:[],dropEffect:''},preventDefault(){},stopImmediatePropagation(){}};
   handlers.dragover(event);assert.equal(figure.className,'image-wrap-preview');assert.equal(figure.dataset.mdPreview,'');assert.equal(figure.children[0].src,'blob:test');assert.equal(figure.children[0].style.aspectRatio,'2');assert.equal(commits,0);assert.equal(source,'Original source');
-  event.clientX=620;handlers.dragover(event);assert.match(figure.style.cssText,/--wrap-side:right/);assert.equal(commits,0);
-  await handlers.drop(event);assert.equal(figure,null);assert.equal(commits,1);assert.equal(wrapper.style.cssText,'width:25%');
+  const first=figure;assert.ok(classes.has('image-wrap-source-hidden'));event.clientX=620;handlers.dragover(event);assert.equal(figure,first);assert.equal(anchors,1);assert.match(figure.style.cssText,/--wrap-side:right/);assert.equal(commits,0);
+  await handlers.drop(event);assert.equal(figure,null);assert.equal(commits,1);assert.equal(classes.size,0);assert.equal(wrapper.style.cssText,'width:25%');assert.match(html,/setDragImage\(ghost,0,0\)/);
+});
+
+test('marginalia leaves the document body and follows anchored text through edits and moves', () => {
+  let id=0;const ctx=vm.createContext({uid:()=>String(++id)});vm.runInContext(section('function codeFenceLine(', 'function literalCodeFenceLength(')+section('function marginNotes(', 'function setSourceNote('),ctx);
+  const source='Intro\n\n> [!margin] Remember this\n\nImportant paragraph\n\nEnd\n```md\n> [!margin] literal\n```';
+  const migrated=ctx.migrateLegacyMarginalia(source);assert.equal(migrated.changed,true);assert.equal(migrated.notes.length,1);assert.equal(migrated.source,'Intro\n\nImportant paragraph\n\nEnd\n```md\n> [!margin] literal\n```');
+  let text=migrated.source,notes=migrated.notes;assert.equal(text.slice(notes[0].from,notes[0].to),'Important paragraph');
+  let next='Added section\n\n'+text;notes=ctx.rebaseMarginNotes(notes,text,next);text=next;assert.equal(text.slice(notes[0].from,notes[0].to),'Important paragraph');
+  next=text.replace('Added section\n\nIntro\n\n','');notes=ctx.rebaseMarginNotes(notes,text,next);text=next;assert.equal(notes[0].from,0);assert.equal(text.slice(notes[0].from,notes[0].to),'Important paragraph');
+  next=text.replace('Important paragraph\n\n','')+'\n\nImportant paragraph';notes=ctx.rebaseMarginNotes(notes,text,next);text=next;assert.equal(text.slice(notes[0].from,notes[0].to),'Important paragraph');
+  next=text.replace('Important paragraph','');notes=ctx.rebaseMarginNotes(notes,text,next);assert.equal(notes[0].orphaned,true);assert.equal(notes[0].text,'Remember this');
+  const pasted=next+'\nImportant paragraph',restored=ctx.rebaseMarginNotes(notes,next,pasted);assert.equal(restored[0].orphaned,false);assert.equal(pasted.slice(restored[0].from,restored[0].to),'Important paragraph');
+  assert.match(ctx.markdownWithMarginalia(migrated.source,migrated.notes),/> \[!margin\] Remember this\n\nImportant paragraph/);
+});
+
+test('side rail annotations follow document coordinates without overlapping and search count can wrap', () => {
+  const ctx=vm.createContext({});vm.runInContext(section('function marginaliaLayout(', 'function wireMarginaliaRail('),ctx);
+  const result=ctx.marginaliaLayout([{y:110,from:5,height:35},{y:115,from:8,height:50},{y:240,from:12,height:25}]);assert.deepEqual(plain(result).map(r=>r.top),[110,155,240]);
+  assert.match(html,/host\.append\(rail\)/);assert.match(html,/\.search-options\{flex-wrap:wrap;gap:6px 10px\}/);assert.match(html,/#search-count\{margin-left:auto;white-space:nowrap/);
 });
 
 test('empty folder cleanup never selects folders containing files, Trash or unselected children', () => {
