@@ -20,6 +20,48 @@ test('all executable scripts parse', () => {
   }
 });
 
+test('scratchpad movement is clamped to its home pane even when it is resized', () => {
+  const ctx=vm.createContext({});vm.runInContext(section('function scratchpadPosition(', 'function wireScratchpadMove('),ctx);
+  assert.deepEqual(plain(ctx.scratchpadPosition(-40,900,1000,700,680,480)),{x:0,y:220});
+  assert.deepEqual(plain(ctx.scratchpadPosition(300,200,200,100,240,160)),{x:0,y:0});
+  assert.deepEqual(plain(ctx.scratchpadPosition(100,90,1000,700,680,480)),{x:100,y:90});
+});
+
+test('Focus Mode migrates prior options and always activates or disables both effects', () => {
+  const prefs={adaptiveInterface:false,paragraphSpotlight:true},classes=new Map(),ctx=vm.createContext({settings:()=>prefs,document:{body:{classList:{toggle:(key,value)=>classes.set(key,value)}}},stickyHeadingViews:[]});
+  vm.runInContext(section('const quietDesignSettings=', 'function appearanceSettingsHTML('),ctx);
+  ctx.applyQuietDesignSettings();assert.equal(prefs.focusMode,true);assert.equal('adaptiveInterface' in prefs,false);assert.equal('paragraphSpotlight' in prefs,false);assert.equal(classes.get('adaptive-interface'),true);assert.equal(classes.get('paragraph-spotlight'),true);
+  prefs.focusMode=false;ctx.applyQuietDesignSettings();assert.equal(classes.get('adaptive-interface'),false);assert.equal(classes.get('paragraph-spotlight'),false);
+});
+
+test('rendered markdown tables keep native table layout and subtle cell borders', () => {
+  assert.match(html,/\.editor table :is\(th,td\),\.canvas-markdown-content table :is\(th,td\)\{border:1px solid var\(--line\);background:transparent/);
+  assert.match(html,/\.source-editor \.md-table-preview table\{width:auto;min-width:0;max-width:100%\}/);
+  assert.match(html,/\.canvas-text-preview table\{display:table;/);
+  const ctx=vm.createContext({});vm.runInContext(scripts.find(m=>m[1].includes('data-vendor="marked"'))[2],ctx);
+  const markup=ctx.marked.parse('| Topic | Value |\n| :--- | ---: |\n| **A** | 12 |');assert.match(markup,/<thead>[\s\S]*<tbody>/);assert.match(markup,/<td[^>]*><strong>A<\/strong><\/td>/);assert.match(markup,/align="right"/);
+});
+
+test('image wrapping supports wider images, edge snapping and flexible offsets', () => {
+  const ctx=vm.createContext({});vm.runInContext(section('function validImageTextWrap(', 'const IMAGE_ROW_LIMIT='),ctx);
+  const left=ctx.imageWrapAt(1000,700,100),right=ctx.imageWrapAt(1000,200,600),edge=ctx.imageWrapAt(1000,700,200,true);
+  assert.equal(left.width,.7);assert.equal(left.side,'left');assert.equal(right.side,'right');assert.ok(Math.abs(right.offset-.2)<1e-8);assert.equal(edge.offset,0);assert.equal(ctx.validImageTextWrap({side:'left',width:.7,offset:.19}),true);assert.equal(ctx.validImageTextWrap({side:'left',width:.7,offset:.21}),false);
+});
+
+test('live wrap drag shows a real temporary image in text and commits only on drop', async () => {
+  const handlers={},target={nodeType:1,isConnected:true,contains:()=>true,getBoundingClientRect:()=>({left:0,width:800,top:0,bottom:400}),normalize(){}},wrapper={style:{cssText:'width:25%'},isConnected:true};let figure=null,commits=0,source='Original source';
+  function element(tag){return {tag,style:{},dataset:{},children:[],append(el){this.children.push(el);},setAttribute(){},remove(){if(figure===this)figure=null;}};}
+  const media={querySelector:q=>q==='img'?{src:'blob:test',naturalWidth:400,naturalHeight:200}:null,closest:()=>wrapper};
+  const root={closest:()=>null,contains:()=>true,classList:{remove(){}},addEventListener:(event,fn)=>handlers[event]=fn,removeEventListener(){}};
+  const engine={model:{},isReadOnly:()=>false,source:()=>source,imageWrapTarget:()=>target,imageWrapAnchor:()=>7,sourceRange:()=>({startContainer:target,insertNode(el){figure=el;el.parentNode=target;}}),wrapImage(_drag,block,wrap,_incoming,at){commits++;assert.equal(block,target);assert.equal(at,7);assert.ok(wrap.width>0);}};
+  const ctx=vm.createContext({root,engine,drag:{engine,item:{media},width:200,height:100,grabOffset:50,source},document:{createElement:element,body:{append(){throw Error('No floating gray overlay should appear');}},addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},URL:{revokeObjectURL(){}}});
+  vm.runInContext(section('function validImageTextWrap(', 'const IMAGE_ROW_LIMIT=')+section('let imageRowDrag=null;', 'function sourceImageRowHTML(')+'\nimageRowDrag=drag;wireImageRowInteractions(root,engine);',ctx);
+  const event={target,clientX:120,clientY:70,shiftKey:false,dataTransfer:{items:[],dropEffect:''},preventDefault(){},stopImmediatePropagation(){}};
+  handlers.dragover(event);assert.equal(figure.className,'image-wrap-preview');assert.equal(figure.dataset.mdPreview,'');assert.equal(figure.children[0].src,'blob:test');assert.equal(figure.children[0].style.aspectRatio,'2');assert.equal(commits,0);assert.equal(source,'Original source');
+  event.clientX=620;handlers.dragover(event);assert.match(figure.style.cssText,/--wrap-side:right/);assert.equal(commits,0);
+  await handlers.drop(event);assert.equal(figure,null);assert.equal(commits,1);assert.equal(wrapper.style.cssText,'width:25%');
+});
+
 test('empty folder cleanup never selects folders containing files, Trash or unselected children', () => {
   const ctx=vm.createContext({});vm.runInContext(section('function emptyFolderCandidates(', 'function emptyFoldersDialog('),ctx);
   const w={archiveFolder:'archive',notes:[{folder:'occupied',deleted:1}],folders:[{id:'parent',parent:null},{id:'child',parent:'parent'},{id:'other',parent:'parent'},{id:'occupied',parent:null},{id:'archive',parent:null},{id:'trashed',parent:'occupied',deleted:1}]};
