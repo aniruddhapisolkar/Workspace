@@ -20,6 +20,16 @@ test('all executable scripts parse', () => {
   }
 });
 
+test('image toolbar stays readable when images shrink and stays inside the pane', () => {
+  assert.match(html,/\.media-tools\{width:max-content;[^}]*flex-wrap:wrap;/);
+  assert.match(html,/\.media-tools button\{flex:0 0 auto;white-space:nowrap;overflow-wrap:normal;word-break:normal;min-width:max-content\}/);
+  const ctx=vm.createContext({});vm.runInContext(section('function mediaToolbarLeft(', 'function positionMediaTools('),ctx);
+  assert.equal(ctx.mediaToolbarLeft(300,100,220,240,900),-56);
+  assert.equal(ctx.mediaToolbarLeft(800,100,220,240,900),-124);
+  assert.equal(ctx.mediaToolbarLeft(300,500,220,240,900),276);
+  assert.equal(ctx.mediaToolbarLeft(245,100,220,240,900),-1);
+});
+
 test('scratchpad movement is clamped to its home pane even when it is resized', () => {
   const ctx=vm.createContext({});vm.runInContext(section('function scratchpadPosition(', 'function wireScratchpadMove('),ctx);
   assert.deepEqual(plain(ctx.scratchpadPosition(-40,900,1000,700,680,480)),{x:0,y:220});
