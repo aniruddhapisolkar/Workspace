@@ -4419,7 +4419,7 @@ function growMarkdownTable(block, axis) {
  function updateSlash(){if(disposed||document.activeElement!==root)return;const selection=editorSelection(),block=editorBlocks[editorBlockAt(selection.to)];if(selection.from!==selection.to||block?.token.type==='code')return hideSlash();const before=editorSource.slice(block.start,selection.to),wiki=before.match(/(?<![\\\[])\[\[([^\]\n]*)$/);let start,items,type;
   if(wiki){start=selection.to-wiki[0].length;type='wiki';items=wikiSuggestions(wiki[1],model);}
   else{const slash=before.match(/(?:^|\s)\/([a-z0-9 ]*)$/i);if(!slash)return hideSlash();start=selection.to-slash[1].length-1;type='slash';items=slashCommands.filter(([name,command])=>(name+' '+command).toLowerCase().includes(slash[1].toLowerCase())).map(([name,command,description])=>({name,description,value:command}));}
-  if(!items.length)return hideSlash();menuState={start,end:selection.to,items,type,index:0};const menu=$('#slash-menu');menu.innerHTML=items.map((item,i)=>'<button role="option" class="'+(i===0?'active':'')+'" data-source-option="'+i+'"><span>'+esc(item.name)+'<small>'+esc(item.description)+'</small></span></button>').join('');const range=getSelection().getRangeAt(0),r=range.getBoundingClientRect();menu.hidden=false;menu.style.left=Math.max(8,Math.min(innerWidth-280,r.left))+'px';menu.style.top=Math.max(8,Math.min(innerHeight-menu.offsetHeight-10,r.bottom+8))+'px';}
+  if(!items.length)return hideSlash();menuState={start,end:selection.to,items,type,index:0};const menu=$('#slash-menu');menu.innerHTML=items.map((item,i)=>'<button role="option" class="'+(i===0?'active':'')+'" data-source-option="'+i+'"><span>'+esc(item.name)+'<small>'+esc(item.description)+'</small></span></button>').join('');const range=getSelection().getRangeAt(0),r=range.getBoundingClientRect();menu.hidden=false;menu.style.minWidth=Math.min(230,Math.max(0,innerWidth-12))+'px';menu.style.maxWidth=Math.min(380,Math.max(0,innerWidth-12))+'px';menu.style.maxHeight=Math.min(320,Math.max(0,innerHeight-12))+'px';const pos=menuViewportPosition(r,menu.offsetWidth,menu.offsetHeight,innerWidth,innerHeight,8);menu.style.left=pos.left+'px';menu.style.top=pos.top+'px';}
  function chooseMenu(index){if(!menuState)return;const menu=menuState,item=menu.items[index];hideSlash();if(menu.type==='wiki'){const closing=editorSource.slice(menu.end,menu.end+2)===']]'?2:0;replaceEditorText('[['+item.value+']]',{from:menu.start,to:menu.end+closing});return;}replaceEditorText('',{from:menu.start,to:menu.end});sourceSavedRange={...editorCursor};if(item.value==='table')tableDialog();else if(item.value==='diagram')diagramDialog();else if(item.value==='media')chooseMedia('editor');else if(item.value==='divider')replaceEditorText('\n---\n');else command(item.value);}
  function insertCallout(){
   restoreRange();const range=editorSelection(),selected=editorSource.slice(range.from,range.to),lineStart=range.from===0?0:editorSource.lastIndexOf('\n',range.from-1)+1;
@@ -5620,10 +5620,10 @@ function flushResumePositions(){
  }
  dirtyResumeWorkspaces.clear();
 }
-function updateResumePosition(view,change){
+function updateResumePosition(view,change,force=false){
  if(clearingRememberedStates||!view?.note||!view.scroll||!view.el.isConnected||view.note.deleted||!storeState.workspaces.includes(view.workspace))return;
  const id=view.note.id,local=view.position||{};
- const updates=Object.fromEntries(Object.entries(change).filter(([key,value])=>local[key]!==value));
+ const updates=Object.fromEntries(Object.entries(change).filter(([key,value])=>force||local[key]!==value));
  if(!Object.keys(updates).length)return;
  view.position={...local,...updates};
  let panePositions=paneResumePositions.get(view.pane);
@@ -5633,12 +5633,12 @@ function updateResumePosition(view,change){
  positions.set(id,{...positions.get(id),...updates});dirtyResumeWorkspaces.add(view.workspace);
  clearTimeout(resumeTimer);resumeTimer=setTimeout(flushResumePositions,250);
 }
-function capturePanePosition(view){
+function capturePanePosition(view,force=false){
  view.flushCanvasCamera?.();
- if(!view.scroll||view.embeddedViewer)return;
+ if(!view.scroll||!view.engine||view.embeddedViewer)return;
  const change={top:view.scroll.scrollTop,left:view.scroll.scrollLeft};
- if(document.activeElement===view.engine.root)change.caret=view.engine.selection().to;
- updateResumePosition(view,change);
+ if(!view.engine.isReadOnly())change.caret=view.engine.selection().to;
+ updateResumePosition(view,change,force);
 }
 function restorePanePosition(view){
  const position=paneResumePositions.get(view.pane)?.get(view.note.id)||notePositions(view.workspace).get(view.note.id);
@@ -6034,7 +6034,7 @@ function calendarColorMenu(w,key,task,anchor){
  const menu=$('#menu'),colors=document.createElement('div');colors.className='calendar-colors';
  colors.setAttribute('aria-label','Task color');
  colorSwatches(colors,task.color,color=>{closeMenu();setCalendarTaskColor(w,key,task,color);if(anchor?.isConnected)anchor.focus({preventScroll:true});},true);
- menu.append(colors);menu.style.top=Math.max(8,Math.min(innerHeight-menu.offsetHeight-8,parseFloat(menu.style.top)))+'px';setTimeout(()=>{if(colors.isConnected&&!menu.hidden)colors.querySelector('[aria-pressed=true]')?.focus({preventScroll:true});},0);
+ menu.append(colors);positionWorkspaceMenu(menu);setTimeout(()=>{if(colors.isConnected&&!menu.hidden)colors.querySelector('[aria-pressed=true]')?.focus({preventScroll:true});},0);
 }
 function writeCalendarDay(key,tasks,w){
 
@@ -7350,6 +7350,9 @@ function canvasChecklistOffsets(source){
  }
  return offsets;
 }
+function canvasViewportBounds(camera,width,height,padding=0){const x=(width/2+padding)/camera.zoom,y=(height/2+padding)/camera.zoom;return {left:camera.x-x,right:camera.x+x,top:camera.y-y,bottom:camera.y+y};}
+function canvasBoundsContain(outer,inner){return !!outer&&outer.left<=inner.left&&outer.right>=inner.right&&outer.top<=inner.top&&outer.bottom>=inner.bottom;}
+function canvasConnectionNear(a,b,bounds){const margin=32;return Math.max(a.x+a.w,b.x+b.w)+margin>=bounds.left&&Math.min(a.x,b.x)-margin<=bounds.right&&Math.max(a.y+a.h,b.y+b.h)+margin>=bounds.top&&Math.min(a.y,b.y)-margin<=bounds.bottom;}
 function mountCanvas(view){
  const {workspace:w,note:n,pane:p,el}=view,items=n.canvas.items;
  const settingsButton=$('[data-action=note-menu]',el);
@@ -7390,8 +7393,8 @@ function mountCanvas(view){
  const cardImages=new WeakMap(),nearCards=new Set(),pendingPdfs=new Set(),retainedPdfs=new Map(),retainedImageCards=new Map(),cardSizes=new WeakMap();
  let drag=null,textView=null,inlineText=null,selected=new Set(),lastDrag=null,guideFrame=0,spaceHeld=false,gridFrame=0,gridPointer=null,marqueeFrame=0;
  let chromeFrame=0,sceneDirty=true,selectedEdge=null,mapDrag=null,miniBounds=null,mapView=null,edgePreview=null,edgeTip=null;
- let cameraFrame=0,cameraSavePending=false,navigationTimer=0,pdfPumpFrame=0,previewScaleTimer=0,activePdfRenders=0,canvasDisposed=false,lastHandleZoom=null,gridPhaseX='0px',gridPhaseY='0px';
- const edgeElements=new Map();let flightFrame=0,dimensionTimer=0,spotlightIds=null,spotlightKey='';
+ let cameraFrame=0,cameraSavePending=false,navigationTimer=0,pdfPumpFrame=0,previewScaleTimer=0,activePdfRenders=0,canvasDisposed=false,lastHandleZoom=null,gridPhaseX='0px',gridPhaseY='0px',detailZoom=camera.zoom>=.28;
+ const edgeElements=new Map();let flightFrame=0,dimensionTimer=0,spotlightIds=null,spotlightKey='',edgeWindow=null;
  function cancelCameraFlight(save=false){if(!flightFrame)return;cancelAnimationFrame(flightFrame);flightFrame=0;if(save)changed(null,false);}
  function flyToLocation(location){
   if(drag||canvasDisposed)return;cancelCameraFlight();surface.focus({preventScroll:true});hideDimensions();
@@ -7633,6 +7636,7 @@ function mountCanvas(view){
   }else if(edgePreview){edgePreview.remove();edgeTip?.remove();edgePreview=edgeTip=null;}
  }
  function paintConnections(dirty){
+  const viewport=canvasViewportBounds(camera,surface.clientWidth,surface.clientHeight,100);if(!canvasBoundsContain(edgeWindow,viewport)||edgeWindow.right-edgeWindow.left>4*(viewport.right-viewport.left)){edgeWindow=canvasViewportBounds(camera,surface.clientWidth,surface.clientHeight,400);dirty=true;}
   if(!dirty&&drag?.type==='connect'){paintConnectionPreview();return;}
   if(!dirty&&!['connect','edge'].includes(drag?.type)){sizeConnectionHandles();return;}
   const byId=new Map(items.map(item=>[item.id,item])),visible=new Set(),aggregates=new Set();
@@ -7641,6 +7645,7 @@ function mountCanvas(view){
    const moving=drag?.type==='edge'&&drag.edge===edge,from=byId.get(edge.from),to=byId.get(edge.to);if(!from||!to)continue;
    let a=visualBox(from),b=visualBox(to);if(a.id===b.id)continue;const aggregate=a.id!==from.id||b.id!==to.id;
    if(moving&&drag.box){if(drag.endName==='from')a=drag.box;else b=drag.box;}
+   if(!moving&&selectedEdge!==edge.id&&!canvasConnectionNear(a,b,edgeWindow))continue;
    const key=aggregate?'group:'+JSON.stringify([a.id,b.id].sort()):edge.id;
    if(aggregates.has(key))continue;aggregates.add(key);visible.add(key);
    let nodes=edgeElements.get(key);
@@ -7746,6 +7751,7 @@ function mountCanvas(view){
   if(!navigationTimer){surface.style.setProperty('--grid-offset-x',gridPhaseX);surface.style.setProperty('--grid-offset-y',gridPhaseY);}
   if(gridPointer&&!gridFrame&&!navigationTimer)gridFrame=requestAnimationFrame(paintGridPointer);
   const label=Math.round(camera.zoom*100)+'%';if(zoomLabel.textContent!==label)zoomLabel.textContent=label;queueCanvasChrome(false);
+  if(detailZoom!==(camera.zoom>=.28)){detailZoom=camera.zoom>=.28;for(const card of nearCards)if(card._canvasItem?.type==='text'){if(detailZoom||card.contains(document.activeElement))syncCard(card,card._canvasItem);else deferCanvasText(card);}}
   if(pdfPreviews.size&&previewRasterScale()!==pdfRasterScale){
    clearTimeout(previewScaleTimer);
    previewScaleTimer=setTimeout(refreshPdfScale,110);
@@ -8224,12 +8230,16 @@ function mountCanvas(view){
   let total=0;for(const count of retainedImageCards.values())total+=count;
   while(retainedImageCards.size>16||total>12000000){const [old,count]=retainedImageCards.entries().next().value;total-=count;updateCardImages(old,false);}
  }
+ function deferCanvasText(card){const preview=$('.canvas-text-preview',card),item=card._canvasItem;if(!preview||inlineText?.item===item||textView?.item===item||card.contains(document.activeElement))return;const content=$('.canvas-markdown-content',preview);if(typeof preview._source==='string'){preview._savedScroll=preview.scrollTop;content.style.minHeight=Math.min(1200,content.offsetHeight)+'px';updateCardImages(card,false);cardImages.delete(card);preview._source=null;}if(content._placeholder!==item.text||content.childNodes.length!==1||content.firstChild?.nodeType!==3){content.textContent=item.text.match(/\S[^\r\n]*/)?.[0].slice(0,160)||'';content._placeholder=item.text;}}
  function setCardNear(card,visible,retain=true){
   if(nearCards.has(card)===visible&&retain)return;
   if(visible)nearCards.add(card);else nearCards.delete(card);
   if(!visible&&retain)retainCanvasImages(card);else updateCardImages(card,visible);
   const pdf=pdfPreviews.get(card);
   if(pdf){if(visible)queueCanvasPdf(pdf);else stopPdf(pdf,retain);}
+  const item=card._canvasItem,preview=$('.canvas-text-preview',card);
+  if(preview){if(visible)syncCard(card,item);else deferCanvasText(card);}
+  if(item?.type==='file'){const body=$('.canvas-preview',card),asset=w.assets[item.asset];if(visible&&asset&&!inlineContentDisposals.has(card)){body.replaceChildren();inlineContentDisposals.set(card,mountAttachmentCard(body,asset));}else if(!visible&&inlineContentDisposals.has(card)){inlineContentDisposals.get(card)?.();inlineContentDisposals.delete(card);body.replaceChildren();}}
  }
  const mediaObserver=new IntersectionObserver(entries=>{
   for(const entry of entries)if(entry.target.isConnected)setCardNear(entry.target,entry.isIntersecting&&!entry.target.hidden);
@@ -8420,6 +8430,7 @@ function mountCanvas(view){
   };
   if(isText){
    const body=$('.canvas-text-preview',card);body.tabIndex=0;body.setAttribute('role','region');body.setAttribute('aria-label','Scrollable note content');
+   mediaObserver.observe(card);card.addEventListener('focusin',()=>{if(!nearCards.has(card))setCardNear(card,true);else syncCard(card,item);});
    card.addEventListener('wheel',event=>{
     if(event.ctrlKey||event.metaKey||spaceHeld)return;
     const content=event.target.closest('.canvas-text-preview,.canvas-inline-editor');
@@ -8474,7 +8485,7 @@ function mountCanvas(view){
      page.hidden=true;status.textContent='PDF preview';preview.append(page,status);
      preview.classList.add('canvas-preview-pdf');
      pdfPreviews.set(card,{asset,card,page,status,body:preview,revision:0,width:canvasCardWidth(item.width,item.type)});mediaObserver.observe(card);
-    }else inlineContentDisposals.set(card,mountAttachmentCard(preview,asset));
+    }else mediaObserver.observe(card);
    }
   }
   return card;
@@ -8532,10 +8543,13 @@ function mountCanvas(view){
    summary.textContent=collapsed?(item.text.match(/\S[^\r\n]*/)?.[0].replace(/^#{1,6}\s+/,'').trim()||'Note'):'';summary.title=summary.textContent;
   }
   const formattingStamp=JSON.stringify(item.formatting||{});
-  if(preview&&!preview.hidden&&(preview._source!==item.text||preview._formattingStamp!==formattingStamp)){
+  const detailed=nearCards.has(card)&&(detailZoom||card.contains(document.activeElement));
+  if(preview&&!preview.hidden&&!detailed){if(preview._source===undefined){$('.canvas-markdown-content',preview).style.minHeight=Math.min(300,Math.max(60,Math.ceil(item.text.length/36)*20))+'px';}deferCanvasText(card);}
+  if(preview&&!preview.hidden&&detailed&&(preview._source!==item.text||preview._formattingStamp!==formattingStamp)){
    preview._source=item.text;preview._formattingStamp=formattingStamp;
    const content=$('.canvas-markdown-content',preview);
    updateCardImages(card,false);
+   content.style.minHeight='';
    content.innerHTML=renderSourceHTML(item.text,canvasTextModel(n,item));
    const images=[];
    const source=item.text,offsets=canvasChecklistOffsets(source),checks=$$('input[type=checkbox]',content);
@@ -8556,12 +8570,13 @@ function mountCanvas(view){
     media.replaceWith(image);images.push(canvasImage(image,asset));
    }
    if(images.length){
-    cardImages.set(card,images);mediaObserver.observe(card);
+    cardImages.set(card,images);
     if(nearCards.has(card))updateCardImages(card,true);
    }else if(cardImages.has(card)){
-    cardImages.delete(card);mediaObserver.unobserve(card);nearCards.delete(card);
+    cardImages.delete(card);
    }
    renderMathWidgets(content);
+   if(Number.isFinite(preview._savedScroll)){preview.scrollTop=preview._savedScroll;delete preview._savedScroll;}
   }
   if(preview&&cardImages.has(card))updateCardImages(card,nearCards.has(card)&&!preview.hidden);
   const editor=textView?.item===item?textView:inlineText?.item===item?inlineText:null;
@@ -8590,7 +8605,7 @@ function mountCanvas(view){
    if(item.type==='file'){
     const body=$('.canvas-preview',card);
     if(hidden){inlineContentDisposals.get(card)?.();inlineContentDisposals.delete(card);body.replaceChildren();}
-    else if(!inlineContentDisposals.has(card)){body.replaceChildren();inlineContentDisposals.set(card,mountAttachmentCard(body,w.assets[item.asset]));}
+    else if(nearCards.has(card)&&w.assets[item.asset]&&!inlineContentDisposals.has(card)){body.replaceChildren();inlineContentDisposals.set(card,mountAttachmentCard(body,w.assets[item.asset]));}
    }
    card.hidden=hidden;
    syncCard(card,item);
@@ -8965,11 +8980,12 @@ function openNewTab(targetPane=currentPane){
 function newNote(folder=activeFolder){readingPanes.delete(pane());if(folder&&(!workspace().folders.some(f=>f.id===folder)||folderInTrash(folder)))folder=null;const n={id:uid(),title:'New Note',html:'',folder,tags:[],created:Date.now(),updated:Date.now()};workspace().notes.push(n);openNote(n.id);setTimeout(()=>focusEditor($('.pane.focused .editor')),0);return n;}
 function closeTabs(i,ids){
  const p=workspace().panes[i];if(!p||!ids.length)return;
+ if(ids.includes(p.active)){const view=paneViews.get(p);if(view){capturePanePosition(view,true);flushResumePositions();}}
  const closing=new Set(ids),previous=p.tabs.slice(),index=previous.indexOf(p.active);
  if(closing.has(p.preview))delete p.preview;
  p.pinned=(p.pinned||[]).filter(tab=>!closing.has(tab));p.tabs=previous.filter(tab=>!closing.has(tab));
  if(closing.has(p.active)){const visible=tab=>!closing.has(tab)&&!tabGroupFor(p,tab)?.collapsed;p.active=previous.slice(0,index).reverse().find(visible)||p.tabs.find(visible)||p.tabs[0]||null;}
- currentPane=i;collapseEmptyPanes();render(true);changed(null,false);
+ currentPane=i;collapseEmptyPanes();render(true);const positions=paneResumePositions.get(p);for(const id of closing)positions?.delete(id);changed(null,false);
 }
 function closeTab(i,id){closeTabs(i,[id]);}
 function splitPane(id=activeNote()?.id){
@@ -9015,7 +9031,7 @@ function closeSelectionToolbarMenu(){
 function closeSelectionToolbarPanels(){closeHighlightPalette();closeSelectionToolbarMenu();}
 function hideSelectionToolbar(){$('#selection-toolbar').hidden=true;closeSelectionToolbarPanels();}
 function hideFloating(){hideSelectionToolbar();$('#slash-menu').hidden=true;}
-function positionSelectionToolbar(range){const r=range.getBoundingClientRect(),bar=$('#selection-toolbar'),w=bar.offsetWidth,h=bar.offsetHeight;bar.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';const above=r.top-h-10;bar.style.top=Math.max(4,Math.min(innerHeight-h-4,above>=4?above:r.bottom+10))+'px';}
+function positionSelectionToolbar(range){const r=range.getBoundingClientRect(),bar=$('#selection-toolbar'),w=bar.offsetWidth;bar.style.maxHeight=Math.max(0,innerHeight-12)+'px';bar.style.overflowY='auto';const h=bar.offsetHeight;bar.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';const above=r.top-h-10;bar.style.top=Math.max(4,Math.min(innerHeight-h-4,above>=4?above:r.bottom+10))+'px';}
 function wireHighlightToolbar(){
  const bar=$('#selection-toolbar'),trigger=document.createElement('button'),palette=document.createElement('div');
  trigger.type='button';trigger.className='highlight-trigger';trigger.title='Highlight text';trigger.setAttribute('aria-label','Highlight text');trigger.setAttribute('aria-expanded','false');trigger.setAttribute('aria-controls','note-highlight-colors');
@@ -9150,8 +9166,15 @@ function linkDialog(){rememberSelection();const text=getSelection().toString(),o
 function tableDialog(){rememberSelection();showDialog('Insert table','<div class="dialog-row"><label for="table-rows">Rows</label><input id="table-rows" name="rows" type="number" value="3" min="1" max="100"></div><div class="dialog-row"><label for="table-cols">Columns</label><input id="table-cols" name="cols" type="number" value="3" min="1" max="20"></div><label><input type="checkbox" name="header" checked> Header row</label><p>Open Edit cells to tab between cells or paste a spreadsheet range.</p>',data=>{const rows=Math.max(1,Math.min(100,+data.get('rows'))),cols=Math.max(1,Math.min(20,+data.get('cols')));let html='<table><tbody>';for(let y=0;y<rows;y++){const tag=y===0&&data.has('header')?'th':'td';html+='<tr>'+Array.from({length:cols},()=>'<'+tag+'><br></'+tag+'>').join('')+'</tr>';}html+='</tbody></table><p><br></p>';$('#dialog').close();insertHTML(html);},'Insert');}
 function sourceDialog(){const n=activeNote();if(!n)return;showDialog('Markdown','<p>Edits replace the body of this note. The title and folder stay the same.</p><textarea name="source" class="source-text" aria-label="Markdown source">'+esc(sourceForNote(n))+'</textarea>',data=>{setSourceNote(n,data.get('source'));$('#dialog').close();renderPanes();changed(n);},'Apply');}
 
-function menuAt(items,anchor){const el=$('#menu'),checks=[];hideFloating();el.innerHTML='';for(const item of items){if(item==='-'){el.append(document.createElement('hr'));continue;}if(item.label){const s=document.createElement('span');s.className='menu-label';s.textContent=item.label;el.append(s);continue;}const b=document.createElement('button'),checkable=typeof item.checked==='function';b.role=checkable?'menuitemcheckbox':'menuitem';b.className=item.danger?'danger':'';if(checkable){checks.push([b,item]);b.setAttribute('aria-checked',String(item.checked()));}b.innerHTML=(checkable?'<span class="menu-checkbox" aria-hidden="true"></span>':item.icon?icon(item.icon):'')+'<span>'+esc(item.text)+'</span>'+(item.shortcut?'<kbd>'+esc(item.shortcut)+'</kbd>':'');b.disabled=!!item.disabled;b.onclick=()=>{if(checkable){item.run();for(const [button,option]of checks)button.setAttribute('aria-checked',String(option.checked()));}else{closeMenu();item.run();}};el.append(b);}el.hidden=false;const r=anchor?.currentTarget?.getBoundingClientRect?.()||anchor?.getBoundingClientRect?.();const x=anchor?.clientX||r?.left||innerWidth/2,y=anchor?.clientY||r?.bottom||innerHeight/2;el.style.left=Math.max(5,Math.min(innerWidth-el.offsetWidth-6,x))+'px';el.style.top=Math.max(5,Math.min(innerHeight-el.offsetHeight-6,y+4))+'px';setTimeout(()=>el.querySelector('button:not(:disabled)')?.focus(),0);}
-function closeMenu(){const menu=$('#menu');menu.hidden=true;menu.replaceChildren();}
+function menuAt(items,anchor){const el=$('#menu'),checks=[];hideFloating();el.innerHTML='';for(const item of items){if(item==='-'){el.append(document.createElement('hr'));continue;}if(item.label){const s=document.createElement('span');s.className='menu-label';s.textContent=item.label;el.append(s);continue;}const b=document.createElement('button'),checkable=typeof item.checked==='function';b.role=checkable?'menuitemcheckbox':'menuitem';b.className=item.danger?'danger':'';if(checkable){checks.push([b,item]);b.setAttribute('aria-checked',String(item.checked()));}b.innerHTML=(checkable?'<span class="menu-checkbox" aria-hidden="true"></span>':item.icon?icon(item.icon):'')+'<span>'+esc(item.text)+'</span>'+(item.shortcut?'<kbd>'+esc(item.shortcut)+'</kbd>':'');b.disabled=!!item.disabled;b.onclick=()=>{if(checkable){item.run();for(const [button,option]of checks)button.setAttribute('aria-checked',String(option.checked()));}else{closeMenu();item.run();}};el.append(b);}el.hidden=false;const r=anchor?.currentTarget?.getBoundingClientRect?.()||anchor?.getBoundingClientRect?.();const pointer=Number.isFinite(anchor?.clientX)&&Number.isFinite(anchor?.clientY)&&(!r||anchor.type==='contextmenu'||anchor.button===2);currentMenuAnchor=pointer?{left:anchor.clientX,top:anchor.clientY,bottom:anchor.clientY}:r||{left:innerWidth/2,top:innerHeight/2,bottom:innerHeight/2};positionWorkspaceMenu(el);setTimeout(()=>el.querySelector('button:not(:disabled)')?.focus({preventScroll:true}),0);}
+function menuViewportPosition(anchor,width,height,viewportWidth,viewportHeight,gap=4){
+ const margin=6,below=anchor.bottom+gap,above=anchor.top-gap-height;
+ return {left:Math.max(margin,Math.min(viewportWidth-width-margin,anchor.left)),top:Math.max(margin,Math.min(viewportHeight-height-margin,below+height<=viewportHeight-margin?below:above>=margin?above:below))};
+}
+let currentMenuAnchor=null;
+function positionWorkspaceMenu(el,anchor=currentMenuAnchor){if(!anchor||el.hidden)return;el.style.minWidth=Math.max(0,Math.min(230,innerWidth-12))+'px';el.style.maxWidth=Math.max(0,Math.min(380,innerWidth-12))+'px';el.style.maxHeight=Math.max(0,innerHeight-12)+'px';const position=menuViewportPosition(anchor,el.offsetWidth,el.offsetHeight,innerWidth,innerHeight);el.style.left=position.left+'px';el.style.top=position.top+'px';}
+function closeMenu(){const menu=$('#menu');menu.hidden=true;menu.replaceChildren();currentMenuAnchor=null;}
+window.addEventListener('resize',()=>positionWorkspaceMenu($('#menu')));
 function canvasGuidesMenuItem(n){
  return canvasOptionMenuItem(n,'guides','alignment & spacing guides');
 }
@@ -9248,7 +9271,15 @@ function documentMenu(e){
  const tools=isCanvasFile(n)?[canvasGuidesMenuItem(n),canvasSelectionMenuItem(n)]:isMediaFile(n)?[]:engine?[{text:reading?'Find in note…':'Find and replace…',icon:'search',shortcut:'Ctrl F',run:openNoteFind},{text:'Collapse all headings',run:()=>engine.foldAllHeadings(true)},{text:'Expand all headings',run:()=>engine.foldAllHeadings(false)},...(!reading?[{text:'View / edit Markdown',icon:'code',run:sourceDialog}]:[])]:[];
  menuAt([{label:n.title},...tools,...(tools.length?['-']:[]),...fileActionItems(n)],e);
 }
-function filesMenu(e){menuAt([{text:'New note',icon:'edit',shortcut:'Ctrl N',run:()=>newNote()},{text:'New folder…',icon:'folderPlus',run:()=>createFolder()},{text:'Saved layouts…',icon:'split',run:layoutDialog},'-',{text:'Open image or PDF…',icon:'image',run:()=>chooseMedia('viewer')},{text:'Import files…',icon:'upload',run:()=>$('#import-input').click()},{text:'Import folder…',icon:'folder',run:()=>$('#folder-input').click()},{text:'Export selected notes…',icon:'download',disabled:!selected.size,run:()=>exportDialog([...selected])},{text:'Export all notes…',icon:'download',run:()=>exportDialog(visibleNotes().map(n=>n.id))},{text:'Export workspace',icon:'download',run:()=>exportWorkspace()},'-',{text:'Trash',icon:'trash',run:()=>{clearSelections();searchMode=true;trashMode=true;query='';$('#search-input').value='';renderTree();}}],e);}
+function filesMenu(e){menuAt([{text:'New note',icon:'edit',shortcut:'Ctrl N',run:()=>newNote()},{text:'New folder…',icon:'folderPlus',run:()=>createFolder()},{text:'Clean up empty folders…',icon:'folder',run:emptyFoldersDialog},{text:'Saved layouts…',icon:'split',run:layoutDialog},'-',{text:'Open image or PDF…',icon:'image',run:()=>chooseMedia('viewer')},{text:'Import files…',icon:'upload',run:()=>$('#import-input').click()},{text:'Import folder…',icon:'folder',run:()=>$('#folder-input').click()},{text:'Export selected notes…',icon:'download',disabled:!selected.size,run:()=>exportDialog([...selected])},{text:'Export all notes…',icon:'download',run:()=>exportDialog(visibleNotes().map(n=>n.id))},{text:'Export workspace',icon:'download',run:()=>exportWorkspace()},'-',{text:'Trash',icon:'trash',run:()=>{clearSelections();searchMode=true;trashMode=true;query='';$('#search-input').value='';renderTree();}}],e);}
+function emptyFolderCandidates(w){
+ const blocked=new Set(w.notes.map(n=>n.folder)),byId=new Map(w.folders.map(f=>[f.id,f]));
+ for(const f of w.folders)if(f.deleted||f.id===w.archiveFolder)blocked.add(f.id);
+ for(const id of [...blocked]){let p=id,seen=new Set();while(p&&!seen.has(p)){seen.add(p);blocked.add(p);p=byId.get(p)?.parent;}}
+ return w.folders.filter(f=>!blocked.has(f.id));
+}
+function emptyFolderRoots(w,chosen){const safe=new Set(emptyFolderCandidates(w).map(f=>f.id)),children=new Map();for(const f of w.folders){if(!children.has(f.parent))children.set(f.parent,[]);children.get(f.parent).push(f.id);}const memo=new Map();function valid(id,seen=new Set()){if(memo.has(id))return memo.get(id);if(!safe.has(id)||!chosen.has(id)||seen.has(id))return false;const next=new Set(seen).add(id),ok=(children.get(id)||[]).every(child=>valid(child,next));memo.set(id,ok);return ok;}return w.folders.filter(f=>valid(f.id)&&!valid(f.parent)).map(f=>f.id);}
+function emptyFoldersDialog(){const w=workspace(),candidates=emptyFolderCandidates(w);if(!candidates.length){flash('No empty folders.');return;}const d=showDialog('Clean up empty folders','<p class="quiet-context">Choose empty folders to move to Trash. Folders containing files, including trashed files, are left alone.</p><div class="quiet-preview empty-folders-list"></div>',()=>{if(workspace()!==w)return;const chosen=new Set($$('input:checked',d).map(el=>el.value)),ids=emptyFolderRoots(w,chosen);if(!ids.length){flash('Select an empty folder with no unselected subfolders.');return;}d.close();trashWorkspaceFolders(ids,true);},'Move to Trash','quiet-action-dialog');const list=$('.empty-folders-list',d);for(const f of candidates.sort((a,b)=>indexedFolderPath(a.id,w).localeCompare(indexedFolderPath(b.id,w)))){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=f.id;input.checked=true;label.className='dialog-row';label.append(document.createTextNode(indexedFolderPath(f.id,w)),input);list.append(label);}}
 function createFolder(parent=activeFolder){askName('New folder','Untitled folder',name=>{workspace().folders.push({id:uid(),name,parent:parent&&!folderInTrash(parent)?parent:null,closed:false});changed();renderTree();});}
 function renameFolder(f){if(f.deleted){flash('Restore this folder before renaming it.');return;}askName('Rename folder',f.name,name=>{const refs=captureWikiReferences();f.name=name;maintainWikiReferences(refs);changed();renderTree();});}
 function renameNote(n){
@@ -9265,6 +9296,7 @@ function ensureArchive(w=workspace()){let id=archiveRoot(w);if(!id){id=uid();w.a
 function syncArchiveMode(){const w=workspace();if(archiveWorkspace!==w){archiveWorkspace=w;archiveMode=false;}if(!searchMode||trashMode)archiveMode=false;if(inArchive(activeFolder,w)!==archiveMode)activeFolder=archiveMode?archiveRoot(w):null;$('#archive-nav').setAttribute('aria-pressed',String(archiveMode));$('#trash-toggle').setAttribute('aria-pressed',String(trashMode));}
 function showArchiveTree(enabled){const w=workspace();archiveWorkspace=w;archiveMode=enabled;searchMode=true;trashMode=false;query='';$('#search-input').value='';quietSidebarFolders.delete(w);clearSelections();activeFolder=enabled?ensureArchive(w):null;renderTree();}
 function moveArchiveItems(noteIds,folderIds,into){const w=workspace(),target=into?ensureArchive(w):null,root=archiveRoot(w),folders=new Set(folderIds),refs=captureWikiReferences();
+ const moving=noteIds.map(noteBy).filter(n=>n&&!n.deleted&&!folderInTrash(n.folder,w)&&inArchive(n.folder,w)!==into);if(moving.some(n=>typeof n.title==='string')&&fileMoveConflicts(w,moving,target).length){void moveFilesWithConflicts(w,moving,target);return;}
  for(const id of folders){const f=w.folders.find(item=>item.id===id);if(!f||id===root||f.deleted||folderInTrash(id,w)||into&&inArchive(id,w)||!into&&!inArchive(id,w))continue;if([...folders].some(parent=>parent!==id&&descendants(parent).has(id)))continue;f.parent=target;}
  for(const id of noteIds){const n=noteBy(id);if(n&&!n.deleted&&!folderInTrash(n.folder,w)&&inArchive(n.folder,w)!==into)n.folder=target;}
  maintainWikiReferences(refs);quietSidebarFolders.delete(w);clearSelections();changed();renderTree();}
@@ -9308,6 +9340,20 @@ async function duplicateWorkspaceFolder(folder){
  }catch(error){flash(error.message||'Could not duplicate the folder.');}finally{workspaceBatchDepth--;wsScheduleEvict();}
 }
 const recentMoveFolders=new WeakMap();
+function availableFileTitle(title,used){let name=title,index=2;while(used.has(wikiKey(name)))name=title+' ('+index+++')';return name;}
+function renameConflictFile(w,n,title){if(n.title===title)return;const asset=isMediaFile(n)&&w.assets[n.asset];if(asset){const extension=asset.name.match(/\.[^.]+$/)?.[0]||'',shared=w.notes.some(other=>other!==n&&noteAssetIds(other).has(n.asset))||w.wallpaper===n.asset,id=shared?uid():n.asset;w.assets[id]={...asset,id,name:title+extension};n.asset=id;}n.title=title;n.updated=Date.now();}
+function fileMoveConflicts(w,files,destination){const incoming=new Set(files.map(n=>n.id)),names=new Map(),rows=[];for(const n of w.notes)if(!n.deleted&&!incoming.has(n.id)&&(n.folder||null)===(destination||null))names.set(wikiKey(n.title),n);for(const n of files){const key=wikiKey(n.title),existing=names.get(key);if(existing)rows.push({file:n,existing:incoming.has(existing.id)?null:existing});else names.set(key,n);}return rows;}
+function fileConflictDialog(rows){return new Promise(resolve=>{const choices=new Map(rows.map(row=>[row.file.id,{action:'rename',existing:row.existing}]));let submitted=false;const d=showDialog('File name conflicts','<p class="quiet-context">Rename the incoming file, skip it, or replace the existing file (which moves to Trash).</p><div class="quiet-import-list"></div>',()=>{submitted=true;d.close();resolve(choices);},'Continue','quiet-action-dialog');const closed=()=>{if(d.open)return;d.removeEventListener('close',closed);if(!submitted)resolve(null);};d.addEventListener('close',closed);const list=$('.quiet-import-list',d);for(const row of rows){const line=calElement('div','quiet-import-row'),label=calElement('div','',row.file.title),select=document.createElement('select');select.setAttribute('aria-label','Action for '+row.file.title);select.append(new Option('Rename','rename'),new Option('Skip','skip'));if(row.existing)select.append(new Option('Replace','replace'));select.onchange=()=>choices.get(row.file.id).action=select.value;line.append(label,select);list.append(line);}});}
+async function moveFilesWithConflicts(w,files,destination){
+ files=files.filter(n=>n&&!n.deleted&&(n.folder||null)!==(destination||null));if(!files.length)return false;
+ const conflicts=fileMoveConflicts(w,files,destination),choices=conflicts.length?await fileConflictDialog(conflicts):new Map();if(!choices||workspace()!==w)return false;
+ const valid=()=>workspace()===w&&(!destination||w.folders.some(f=>f.id===destination&&!folderInTrash(f.id,w)))&&files.every(n=>w.notes.includes(n)&&!n.deleted&&!folderInTrash(n.folder,w));if(!valid())return false;
+ const replace=new Set();for(const [id,choice] of choices)if(choice.action==='replace'&&choice.existing&&!choice.existing.deleted&&w.notes.includes(choice.existing)&&(choice.existing.folder||null)===(destination||null)&&wikiKey(choice.existing.title)===wikiKey(files.find(n=>n.id===id)?.title))replace.add(choice.existing.id);
+ if(replace.size){let owners;try{flushPendingNoteHTML();owners=await prepareTrashLinkOwners(w,replace);}catch(error){flash(error.message,true);return false;}if(!valid())return false;trashNotes([...replace],true,owners);}
+ const refs=captureWikiReferences(),used=new Set(w.notes.filter(n=>!n.deleted&&(n.folder||null)===(destination||null)).map(n=>wikiKey(n.title)));let moved=0;
+ for(const n of files){if(choices.get(n.id)?.action==='skip')continue;const title=availableFileTitle(n.title,used);used.add(wikiKey(title));if(title!==n.title){renameConflictFile(w,n,title);updateTitles(n);}n.folder=destination;changed(n);moved++;}
+ if(!moved)return false;maintainWikiReferences(refs);const folder=w.folders.find(f=>f.id===destination);if(folder)folder.closed=false;clearSelections();changed();renderTree();return true;
+}
 function moveDialog(ids,folderId=null){
  const w=workspace(),invalid=folderId?descendants(folderId):new Set(),movingFolder=folderId?w.folders.find(f=>f.id===folderId):null;
  const files=[...new Set(ids)].map(noteBy).filter(n=>n&&!n.deleted&&!folderInTrash(n.folder,w));if(folderId&&!movingFolder||!folderId&&!files.length)return;
@@ -9315,16 +9361,15 @@ function moveDialog(ids,folderId=null){
  const rows=[{id:null,name:'Workspace root',path:'Workspace root',parent:''},...w.folders.filter(f=>!f.deleted&&!folderInTrash(f.parent,w)&&!invalid.has(f.id)).map(f=>({id:f.id,name:f.name,path:indexedFolderPath(f.id,w),parent:indexedFolderPath(f.parent,w)})).sort((a,b)=>a.path.localeCompare(b.path,undefined,{numeric:true,sensitivity:'base'}))];
  const dialog=showDialog('Move '+(folderId?'folder':files.length===1?'file':files.length+' files'),'<input id="move-folder-search" type="search" placeholder="Find a folder…" aria-label="Find a destination folder" autocomplete="off"><div class="move-destination-list" id="move-list" aria-label="Destination folders"></div>');
  const search=$('#move-folder-search',dialog),list=$('#move-list',dialog);
- function choose(dest){
+ async function choose(dest){
   if(workspace()!==w||!dialog.open||sameDestination(dest.id))return;
   const folder=dest.id?w.folders.find(f=>f.id===dest.id):null;
   if(dest.id&&(!folder||folderInTrash(dest.id,w)||folderId&&descendants(folderId).has(dest.id)))return;
   if(movingFolder&&(!w.folders.includes(movingFolder)||folderInTrash(movingFolder.id,w)))return;
   const live=files.filter(n=>w.notes.includes(n)&&!n.deleted&&!folderInTrash(n.folder,w));if(!movingFolder&&!live.length)return;
-  const refs=captureWikiReferences();if(movingFolder)movingFolder.parent=dest.id;else for(const n of live)n.folder=dest.id;
-  maintainWikiReferences(refs);if(folder)folder.closed=false;
+  if(!movingFolder){dialog.close();if(!await moveFilesWithConflicts(w,live,dest.id))return;}else{const refs=captureWikiReferences();movingFolder.parent=dest.id;maintainWikiReferences(refs);if(folder)folder.closed=false;}
   recentMoveFolders.set(w,[dest.id,...(recentMoveFolders.get(w)||[]).filter(id=>id!==dest.id)].slice(0,5));
-  clearSelections();dialog.close();changed();renderTree();
+  clearSelections();if(dialog.open)dialog.close();changed();renderTree();
  }
  function heading(text){const el=document.createElement('div');el.className='move-destination-group';el.textContent=text;list.append(el);}
  function add(dest){const b=document.createElement('button');b.type='button';b.title=dest.path;b.disabled=sameDestination(dest.id);b.innerHTML=icon(dest.id?'folder':'folderOpen')+'<span class="move-destination-label"><span>'+esc(dest.name)+(b.disabled?' · Current':'')+'</span>'+(dest.parent?'<span class="move-destination-path">'+esc(dest.parent)+'</span>':'')+'</span>';b.onclick=()=>choose(dest);list.append(b);}
@@ -9420,7 +9465,7 @@ async function clearRememberedStates(){
   else flash('Remembered states cleared, but the browser could not forget note positions on reload.',true);
  }else if(!wsConcurrent)flash('Remembered states cleared for this session, but could not be saved. Browser storage may be unavailable.',true);
 }
-function settingsDialog(){const w=workspace();showDialog('Settings',quietSettingsHTML()+appearanceSettingsHTML()+'<div class="dialog-row"><label for="font-setting">Text size</label><input id="font-setting" type="number" min="12" max="32" value="'+settings().fontSize+'"></div><div class="dialog-row"><label for="width-setting">Readable width</label><input id="width-setting" type="checkbox" '+(settings().narrow?'checked':'')+'></div><div class="dialog-row wallpaper-setting"><span>Home wallpaper</span><button type="button" id="remove-wallpaper"'+(workspaceWallpaper(w)?'':' disabled')+'>Remove wallpaper</button></div><div class="dialog-row"><button type="button" id="clear-remembered-states" title="Only clears your preferences, not your data">Clear remembered states</button></div><p>Notes save automatically in this browser. Export a workspace to back up your notes and attachments or move them to another browser.</p>'+storageHealthHTML()+'<div class="buttons"><button type="button" id="settings-shortcuts">Shortcuts</button><button type="button" id="settings-import">Import files…</button><button type="button" id="settings-export">Export workspace</button></div>');wireQuietSettings();wireAppearanceSettings();mountReadingSettings();void showStorageHealth(w);$('#font-setting').onchange=e=>{settings().fontSize=Math.max(12,Math.min(32,+e.target.value||18));applySettings();changed();};$('#width-setting').onchange=e=>{settings().narrow=e.target.checked;$$('.document').forEach(d=>d.classList.toggle('narrow',e.target.checked));changed();};$('#remove-wallpaper').onclick=()=>setWorkspaceWallpaper(w);$('#clear-remembered-states').onclick=()=>void clearRememberedStates();$('#settings-shortcuts').onclick=helpDialog;$('#settings-import').onclick=()=>{$('#dialog').close();$('#import-input').click();};$('#settings-export').onclick=()=>{$('#dialog').close();exportWorkspace();};}
+function settingsDialog(){const w=workspace();showDialog('Settings',quietSettingsHTML()+appearanceSettingsHTML()+'<div class="dialog-row"><label for="font-setting">Text size</label><input id="font-setting" type="number" min="12" max="32" value="'+settings().fontSize+'"></div><div class="dialog-row"><label for="width-setting">Readable width</label><input id="width-setting" type="checkbox" '+(settings().narrow?'checked':'')+'></div><div class="dialog-row wallpaper-setting"><span>Home wallpaper</span><button type="button" id="remove-wallpaper"'+(workspaceWallpaper(w)?'':' disabled')+'>Remove wallpaper</button></div><div class="dialog-row"><button type="button" id="clear-remembered-states" title="Only clears your preferences, not your data">Clear remembered states</button></div><p>Notes save automatically in this browser. Export a workspace to back up your notes and attachments or move them to another browser.</p>'+storageHealthHTML()+'<div class="buttons"><button type="button" id="settings-shortcuts">Shortcuts</button><button type="button" id="settings-calendar">Calendar</button><button type="button" id="settings-import">Import files…</button><button type="button" id="settings-export">Export workspace</button></div>');$('#settings-calendar').onclick=calendarSettingsDialog;wireQuietSettings();wireAppearanceSettings();mountReadingSettings();void showStorageHealth(w);$('#font-setting').onchange=e=>{settings().fontSize=Math.max(12,Math.min(32,+e.target.value||18));applySettings();changed();};$('#width-setting').onchange=e=>{settings().narrow=e.target.checked;$$('.document').forEach(d=>d.classList.toggle('narrow',e.target.checked));changed();};$('#remove-wallpaper').onclick=()=>setWorkspaceWallpaper(w);$('#clear-remembered-states').onclick=()=>void clearRememberedStates();$('#settings-shortcuts').onclick=helpDialog;$('#settings-import').onclick=()=>{$('#dialog').close();$('#import-input').click();};$('#settings-export').onclick=()=>{$('#dialog').close();exportWorkspace();};}
 function helpDialog(){showDialog('Keyboard & writing','<div class="help-grid">'+[['Focus writing / exit','Ctrl/⌘ Shift Enter · Esc'],['New note','Ctrl/⌘ N'],['Undo Canvas change','Ctrl/⌘ Z'],['Redo Canvas change','Ctrl/⌘ Shift Z'],['Pan Canvas','Space + drag'],['Bypass Canvas snapping','Alt + drag'],['Add to Canvas selection','Ctrl/⌘ + click or drag'],['Group Canvas selection','Ctrl/⌘ G'],['Ungroup Canvas selection','Ctrl/⌘ Shift G'],['New note in an empty pane','N'],['Open a note in the current tab','Click in sidebar'],['Open Home in a new tab','+ in the tab bar'],['Create a note from Home','New note or Ctrl/⌘ N'],['Open a note in a new tab','Middle-click or right-click → Open in new tab'],['Search notes','Ctrl/⌘ K / Shift F'],['Find / replace in note','Ctrl/⌘ F'],['Next / previous match','Enter / Shift Enter'],['Bold / italic / underline','Ctrl/⌘ B / I / U'],['Undo / redo','Ctrl/⌘ Z / Shift Z'],['Link to a note','Ctrl/⌘ L'],['Insert into a note','Insert button or /'],['Indent / outdent a calendar task','Alt + → / ← in the task field'],['Back / forward','Alt ← / →'],['Toggle sidebar','Ctrl/⌘ \\'],['Export note','Ctrl/⌘ Shift E'],['Import files','Ctrl/⌘ O'],['Close current tab','Ctrl/⌘ Shift W'],['Leave code block','↓ from its closing fence'],['Insert four spaces','Tab'],['Indent / outdent list','Tab / Shift Tab'],['Select several files','Ctrl/⌘ click / Shift click']].map(([a,b])=>'<span>'+esc(a)+'</span><kbd>'+esc(b)+'</kbd>').join('')+'</div><p>Type <b>#</b>, <b>##</b>, <b>-</b>, <b>1.</b>, <b>&gt;</b>, <b>[]</b>, or <b>```</b> then Space to format a block. Paste Markdown to format it. Click an equation to edit its source. Markdown markers appear at the caret, just as in Workspace. Type [[ to link notes; use [[Note|label]], [[Note#Heading]], or [[Note#^block-id]]. Click a wikilink to open it or create its missing note. Move the caret into a link with the arrow keys to edit its source; Ctrl/⌘ click also opens a link while editing. Heading and block suggestions appear after # or #^. Drag images or PDFs into a note. Ctrl/⌘ click opens a link while editing.</p>');}
 function base64Bytes(data){
  const comma=data.indexOf(',');let encoded=comma<0?data:data.slice(comma+1);
@@ -10500,10 +10545,9 @@ fileTreeSurface.addEventListener('drop',async e=>{
  if(e.dataTransfer.files.length){activeFolder=folder;if(folder)workspace().folders.find(f=>f.id===folder).closed=false;await importFiles([...e.dataTransfer.files]);return;}
  let payload;try{payload=JSON.parse(e.dataTransfer.getData(treeDragType));}catch{return;}
  if(payload.folder&&folder&&descendants(payload.folder).has(folder))return;
- const refs=captureWikiReferences();
- if(payload.folder){const f=workspace().folders.find(f=>f.id===payload.folder);if(f)f.parent=folder;}
- else for(const id of payload.ids||[]){const n=noteBy(id);if(n)n.folder=folder;}
- maintainWikiReferences(refs);if(folder)workspace().folders.find(f=>f.id===folder).closed=false;dragFolder=null;dragIds=[];treeDragInvalid=new Set();changed();renderTree();
+ dragFolder=null;dragIds=[];treeDragInvalid=new Set();
+ if(payload.folder){const refs=captureWikiReferences(),f=workspace().folders.find(f=>f.id===payload.folder);if(f)f.parent=folder;maintainWikiReferences(refs);if(folder)workspace().folders.find(f=>f.id===folder).closed=false;changed();renderTree();}
+ else await moveFilesWithConflicts(workspace(),(payload.ids||[]).map(noteBy).filter(Boolean),folder);
 });
 document.addEventListener('drop',stopTreeDragScroll);
 document.addEventListener('dragend',()=>{stopTreeDragScroll();$$('.drag-over').forEach(el=>el.classList.remove('drag-over'));dragFolder=null;dragIds=[];treeDragInvalid=new Set();scheduleTreeWindow();});
@@ -10613,7 +10657,8 @@ function calendarBlockLanes(tasks){
  function finish(){for(const {task,lane} of group)result.set(calendarBlockId(task),{lane,count:ends.length});group=[];ends=[];groupEnd=-1;}
  for(const task of sorted){const range=task.timeBlock;if(range.start>=groupEnd&&group.length)finish();let lane=ends.findIndex(end=>end<=range.start);if(lane<0)lane=ends.length;ends[lane]=range.end;group.push({task,lane});groupEnd=Math.max(groupEnd,range.end);}finish();return result;
 }
-function calendarTimelineScale(hours,tasks,collapse){
+function calendarDayStart(value=settings().calendarDayStart){return Number.isInteger(value)&&value>=0&&value<1440?value:null;}
+function calendarTimelineScale(hours,tasks,collapse,dayStart=null){
  const minuteHeight=52/60,segments=[],folded=[];
  let at=0,y=0;
  function add(end,compress=false){
@@ -10623,8 +10668,8 @@ function calendarTimelineScale(hours,tasks,collapse){
   segments.push(part);if(span<natural)folded.push(part);
   at=end;y+=span;
  }
- if(collapse){
-  const protectedTimes=[{start:hours.start,end:hours.end},...tasks.map(task=>task.timeBlock).filter(validCalendarTimeBlock)].sort((a,b)=>a.start-b.start);
+ if(collapse||dayStart>0){
+  const protectedTimes=[collapse?{start:hours.start,end:hours.end}:{start:dayStart,end:1440},...tasks.map(task=>task.timeBlock).filter(validCalendarTimeBlock)].sort((a,b)=>a.start-b.start);
   for(const range of protectedTimes){add(range.start,true);add(range.end);}
   add(1440,true);
  }else add(1440);
@@ -10643,7 +10688,7 @@ function calendarTimelineScale(hours,tasks,collapse){
 function mountCalendarTimeline(w,state,body,paneEl,redraw){
  const start=state.mode==='week'?calendarWeekStart(state.date):calendarDate(state.date),keys=[];
  for(let i=0;i<(state.mode==='week'?7:1);i++){keys.push(calendarKey(start));start.setDate(start.getDate()+1);}
- const hours=workingHours(),tasksByDay=new Map(keys.map(key=>[key,calendarTimeTasks(key,w)])),scale=calendarTimelineScale(hours,[...tasksByDay.values()].flat(),settings().collapseOffHours===true);
+ const hours=workingHours(),dayStart=calendarDayStart(),displayStart=state.showEarlyHours?null:dayStart,tasksByDay=new Map(keys.map(key=>[key,calendarTimeTasks(key,w)])),scale=calendarTimelineScale(hours,[...tasksByDay.values()].flat(),settings().collapseOffHours===true,displayStart);
  const compact=scale.folded.length>0;
  const timeline=document.createElement('section');timeline.className='cal-timeline'+(keys.length===7?' week':'');timeline.dataset.collapsed=String(compact);timeline.style.setProperty('--time-days',keys.length);timeline.setAttribute('aria-label','Time blocks');
  const headings=document.createElement('div');headings.className='cal-time-headings';const corner=document.createElement('div');corner.className='cal-time-corner';const add=document.createElement('button');add.type='button';add.className='cal-time-add';add.textContent='+';add.title='Add time block';add.setAttribute('aria-label','Add time block');corner.append(add);headings.append(corner);
@@ -10660,7 +10705,7 @@ function mountCalendarTimeline(w,state,body,paneEl,redraw){
   const expand=document.createElement('button');expand.type='button';expand.className='cal-unfold-hours';expand.innerHTML=icon('more');
   expand.style.top=(range.y+range.height/2)+'px';expand.title='Show full hours · '+calendarTimeLabel(range.start)+'–'+calendarTimeLabel(range.end);
   expand.setAttribute('aria-label','Show full hours');
-  expand.onclick=()=>{setCalendarOffHours(false);$('.cal-planning-options',paneEl)?.focus({preventScroll:true});};
+  expand.onclick=()=>{state.showEarlyHours=true;setCalendarOffHours(false);$('.cal-planning-options',paneEl)?.focus({preventScroll:true});};
   axis.append(expand);
  }
  const columns=[],dayHeads=[],dayTrays=[];let cancelGesture=null;
@@ -10670,7 +10715,7 @@ function mountCalendarTimeline(w,state,body,paneEl,redraw){
   if(target!==key)return calendarMoveTasks(w,key,target,new Set([calendarBlockId(task)]),range);
   if(storeCalendarTimeBlock(w,key,task,target,range)){refreshCalendarViews(w,key);return true;}return false;
  }
- const editBlock=(key,task=null,at=hours.start)=>calendarScheduleDialog(w,key,task,at);
+ const editBlock=(key,task=null,at=dayStart??hours.start)=>calendarScheduleDialog(w,key,task,at);
  add.onclick=()=>editBlock(state.date);
  function drawColumn(key,index){
   const heading=calElement('div','cal-time-heading'+(key===calendarKey()?' today':'')),dateButton=calButton(calendarDate(key).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}),()=>{state.mode='day';state.date=key;refreshCalendarViews(w,key);},'cal-week-open-day');dateButton.title='Open day';heading.append(dateButton);appendCalendarCapacity(heading,w,key);
@@ -10720,13 +10765,13 @@ function mountCalendarTimeline(w,state,body,paneEl,redraw){
  }
  keys.forEach(drawColumn);
  timeline.append(headings,tray,grid);const hint=document.createElement('div');hint.className='cal-time-footer';hint.textContent='Drag to move · Drag either edge to resize · Double-click empty space to add'+(workingHours().enabled?' · Shaded hours: outside working hours':'');timeline.append(hint);body.append(timeline);
- body.scrollTop=compact?0:Math.max(0,scale.top(Math.max(0,hours.start-60)));
+ body.scrollTop=state.showEarlyHours?0:dayStart!==null?Math.max(0,scale.top(dayStart)):compact?0:Math.max(0,scale.top(Math.max(0,hours.start-60)));
  const cleanup=()=>cancelGesture?.();
  cleanup.update=changedKeys=>{
   const affected=keys.filter(key=>changedKeys.includes(key));if(!affected.length)return true;
   cancelGesture?.();const top=body.scrollTop,left=body.scrollLeft,focused=document.activeElement,task=focused?.closest('[data-block-id],[data-calendar-task-id]'),id=task?.dataset.blockId||task?.dataset.calendarTaskId;
   for(const key of affected)tasksByDay.set(key,calendarTimeTasks(key,w));
-  if(compact||settings().collapseOffHours===true){const nextScale=calendarTimelineScale(hours,[...tasksByDay.values()].flat(),true);if(JSON.stringify(nextScale.folded)!==JSON.stringify(scale.folded))return false;}
+  if(compact||settings().collapseOffHours===true||displayStart>0){const nextScale=calendarTimelineScale(hours,[...tasksByDay.values()].flat(),settings().collapseOffHours===true,displayStart);if(JSON.stringify(nextScale.folded)!==JSON.stringify(scale.folded))return false;}
   for(const key of affected)drawColumn(key,keys.indexOf(key));body.scrollTop=top;body.scrollLeft=left;
   if(id&&focused&&!focused.isConnected){const fresh=body.querySelector('[data-block-id="'+CSS.escape(id)+'"],[data-calendar-task-id="'+CSS.escape(id)+'"]');(focused.classList.contains('cal-block-edit')?fresh?.querySelector('.cal-block-edit')||fresh:fresh)?.focus({preventScroll:true});}
   return true;
@@ -10832,7 +10877,7 @@ function tabGroupMenu(index,groupId,anchor,focusName=false){
  name.oninput=()=>{const g=lookup();if(g){g.name=name.value;updateTabGroups();}};name.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();closeMenu();}};
  const colors=document.createElement('div');colors.className='tab-group-colors';colors.setAttribute('role','group');colors.setAttribute('aria-label','Tab group color');
  colorSwatches(colors,group.color,color=>{const g=lookup();if(!g)return;g.color=color;updateTabGroups();});
- controls.append(name,colors);menu.prepend(controls);menu.style.top=Math.max(5,Math.min(innerHeight-menu.offsetHeight-6,parseFloat(menu.style.top)))+'px';
+ controls.append(name,colors);menu.prepend(controls);positionWorkspaceMenu(menu);
  if(focusName)setTimeout(()=>name.focus(),0);
 }
 function tabMenu(index,id,event){
@@ -11303,8 +11348,16 @@ function calendarTaskActions(w,key,task,event){
  const open=fn=>()=>{const current=workspace()===w&&calendarTaskFor(w,key,id);if(!current){flash('This task has changed.');return;}hideTodayAgenda();if(anchor?.isConnected&&!anchor.closest('#today-agenda'))anchor.focus({preventScroll:true});fn(current);};
  const scheduled=validCalendarTimeBlock(live.timeBlock),locked=live.timeBlock?.locked===true;
  const swap=scheduled&&!locked&&calendarSwapCandidates(w,key,id).length>0;
- menuAt([{label:live.text},{text:'Color…',icon:'edit',run:()=>calendarColorMenu(w,key,live,anchor)},{text:scheduled?'Edit time block…':'Schedule…',icon:'calendar',run:open(t=>calendarScheduleDialog(w,key,t))},...(swap?[{text:'Swap time with…',run:open(t=>calendarSwapDialog(w,key,t))}]:[]),...(scheduled?[{text:'Shift time blocks…',run:open(t=>calendarShiftDialog(w,key,false,calendarBlockId(t)))},{text:locked?'Unlock time block':'Lock against dragging',run:open(t=>setCalendarBlockLock(w,key,t,!locked))}]:[]),{text:live.rule?'Move this occurrence…':'Move…',run:open(t=>calendarMoveDialog(w,key,t))},{text:live.rule?'Edit repeating series…':'Repeat…',run:open(t=>t.rule?repeatEditScope(w,key,t):addCalendarRepeat(w,key,t))},taskReminderMenuItem(w,key,live),...(!live.rule?[{text:'Move to Inbox',run:open(t=>moveTaskToInbox(w,key,t))}]:[]),'-',...(live.rule?[{text:'Stop repeating from this date…',run:open(t=>stopCalendarRepeat(w,t,key))}]:[]),{text:live.rule?'Delete this occurrence':'Delete task',icon:'trash',danger:true,run:open(t=>t.rule?skipRepeatOccurrence(w,key,t):deleteCalendarTask(w,key,t))}],event);
+ menuAt([{label:live.text},{text:'Color…',icon:'edit',run:()=>calendarColorMenu(w,key,live,anchor)},{text:scheduled?'Edit time block…':'Schedule…',icon:'calendar',run:open(t=>calendarScheduleDialog(w,key,t))},...(scheduled&&!locked&&live.timeBlock.end-live.timeBlock.start>1?[{text:'Split time block…',run:open(t=>calendarSplitDialog(w,key,t))}]:[]),...(swap?[{text:'Swap time with…',run:open(t=>calendarSwapDialog(w,key,t))}]:[]),...(scheduled?[{text:'Shift time blocks…',run:open(t=>calendarShiftDialog(w,key,false,calendarBlockId(t)))},{text:locked?'Unlock time block':'Lock against dragging',run:open(t=>setCalendarBlockLock(w,key,t,!locked))}]:[]),{text:live.rule?'Move this occurrence…':'Move…',run:open(t=>calendarMoveDialog(w,key,t))},{text:live.rule?'Edit repeating series…':'Repeat…',run:open(t=>t.rule?repeatEditScope(w,key,t):addCalendarRepeat(w,key,t))},taskReminderMenuItem(w,key,live),...(!live.rule?[{text:'Move to Inbox',run:open(t=>moveTaskToInbox(w,key,t))}]:[]),'-',...(live.rule?[{text:'Stop repeating from this date…',run:open(t=>stopCalendarRepeat(w,t,key))}]:[]),{text:live.rule?'Delete this occurrence':'Delete task',icon:'trash',danger:true,run:open(t=>t.rule?skipRepeatOccurrence(w,key,t):deleteCalendarTask(w,key,t))}],event);
 }
+function calendarSplitPlan(w,key,id,minute,newId){
+ const before=calendarManageSnapshot(w),draft={...w,calendar:structuredClone(before)},tasks=calendarTasks(key,draft),index=tasks.findIndex(t=>t.id===id),task=tasks[index]||(id.startsWith('repeat:')?calendarTaskFor(draft,key,id):null),range=task?.timeBlock;
+ if(!validCalendarTimeBlock(range)||range.locked||!Number.isInteger(minute)||minute<=range.start||minute>=range.end||!newId||tasks.some(t=>t.id===newId))return null;
+ const next={id:newId,text:task.text,depth:task.depth||0,done:task.done,color:task.color,timeBlock:{start:minute,end:range.end}},first={start:range.start,end:minute};
+ if(task.rule){tasks.push(next);writeCalendarDay(key,tasks,draft);const day=draft.calendar.days[key];day.blocks??={};day.blocks[id]=first;}else{const end=calendarSubtreeEnd(tasks,index);task.timeBlock=first;tasks.splice(end,0,next);writeCalendarDay(key,tasks,draft);}
+ return {before,after:draft.calendar,rows:[task,next]};
+}
+function calendarSplitDialog(w,key,task){const id=calendarBlockId(task),range=task.timeBlock,mid=Math.floor((range.start+range.end)/2);const d=showDialog('Split time block','<p class="cal-context-date">'+esc(task.text)+' · '+calendarTimeSpan(range)+'</p><label>Split at<input name="split" type="time" value="'+calendarTimeLabel(mid)+'" required></label><p class="quiet-context">Creates two adjacent blocks. The original reminder and subtasks stay with the first. '+(task.rule?'Only this occurrence changes.':'')+'</p><p class="cal-setting-error" role="status"></p>',data=>{const live=calendarTaskFor(w,key,id),plan=live&&live.timeBlock?.start===range.start&&live.timeBlock?.end===range.end?calendarSplitPlan(w,key,id,calendarParseClock(data.get('split')),uid()):null;if(!plan){$('.cal-setting-error',d).textContent='Choose a time inside the unlocked block.';return;}d.close();calendarManageCommit(w,plan);},'Split','quiet-action-dialog');}
 function setCalendarBlockLock(w,key,task,locked){
  if(w!==workspace())return false;
  const live=calendarTaskFor(w,key,calendarBlockId(task));if(!validCalendarTimeBlock(live?.timeBlock))return false;
@@ -11680,9 +11733,9 @@ function calendarManagementDialog(w=workspace(),initial='cleanup'){
 
 function calendarSettingsDialog(){
  const hours=workingHours(),capacity=capacitySettings(),prefs=settings(),checked=flag=>flag?' checked':'';
- const d=showDialog('Calendar settings','<section class="cal-setting-section"><h3>Working schedule</h3><p class="cal-schedule-summary" aria-live="polite"></p><div class="working-days" role="group" aria-label="Working days">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((name,i)=>'<label><input type="checkbox" name="day" value="'+i+'"'+checked(hours.days.includes(i))+'>'+name+'</label>').join('')+'</div><div class="cal-form-pair"><label>Start<input type="time" name="start" value="'+calendarTimeLabel(hours.start)+'" required></label><label>End<input type="time" name="end" value="'+(hours.end===1440?'00:00':calendarTimeLabel(hours.end))+'" required></label></div></section><section class="cal-setting-section"><h3>Display</h3><label class="cal-setting-check"><input type="checkbox" name="shade"'+checked(hours.enabled)+'> Shade hours outside the working schedule</label><label class="cal-setting-check"><input type="checkbox" name="collapse"'+checked(prefs.collapseOffHours===true)+'> Collapse off-hours in the week view</label></section><section class="cal-setting-section"><h3>Capacity</h3><label class="cal-setting-check"><input type="checkbox" name="capacity"'+checked(capacity.enabled)+'> Show available planning time</label><fieldset class="cal-capacity-options cal-form-pair"'+(capacity.enabled?'':' hidden disabled')+'><label>Daily breaks (minutes)<input type="number" name="breaks" min="0" max="1440" value="'+capacity.breakMinutes+'" required></label><label>Buffer between blocks (minutes)<input type="number" name="buffer" min="0" max="120" value="'+capacity.bufferMinutes+'" required></label><p>Working hours minus breaks and buffers. This is a guide, not a limit.</p></fieldset></section><p class="cal-setting-error" role="status"></p>',data=>{
+ const d=showDialog('Calendar settings','<section class="cal-setting-section"><h3>Working schedule</h3><p class="cal-schedule-summary" aria-live="polite"></p><div class="working-days" role="group" aria-label="Working days">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((name,i)=>'<label><input type="checkbox" name="day" value="'+i+'"'+checked(hours.days.includes(i))+'>'+name+'</label>').join('')+'</div><div class="cal-form-pair"><label>Start<input type="time" name="start" value="'+calendarTimeLabel(hours.start)+'" required></label><label>End<input type="time" name="end" value="'+(hours.end===1440?'00:00':calendarTimeLabel(hours.end))+'" required></label></div></section><section class="cal-setting-section"><h3>Display</h3><label class="cal-setting-check"><input type="checkbox" name="shade"'+checked(hours.enabled)+'> Shade hours outside the working schedule</label><label class="cal-setting-check"><input type="checkbox" name="collapse"'+checked(prefs.collapseOffHours===true)+'> Collapse off-hours in the week view</label><label>Visual day start (optional)<input type="time" name="dayStart" value="'+(calendarDayStart()===null?'':calendarTimeLabel(calendarDayStart()))+'"></label><p class="quiet-context">Earlier empty hours fold away; scheduled blocks stay visible. Clear to use the usual view.</p></section><section class="cal-setting-section"><h3>Capacity</h3><label class="cal-setting-check"><input type="checkbox" name="capacity"'+checked(capacity.enabled)+'> Show available planning time</label><fieldset class="cal-capacity-options cal-form-pair"'+(capacity.enabled?'':' hidden disabled')+'><label>Daily breaks (minutes)<input type="number" name="breaks" min="0" max="1440" value="'+capacity.breakMinutes+'" required></label><label>Buffer between blocks (minutes)<input type="number" name="buffer" min="0" max="120" value="'+capacity.bufferMinutes+'" required></label><p>Working hours minus breaks and buffers. This is a guide, not a limit.</p></fieldset></section><p class="cal-setting-error" role="status"></p>',data=>{
   const start=calendarParseClock(data.get('start')),end=calendarParseClock(data.get('end'),true);if(!Number.isFinite(start)||!Number.isFinite(end)||start>=end){$('.cal-setting-error',d).textContent='End must be after start. Midnight is the end of the day.';return;}
-  prefs.workingHours={enabled:data.has('shade'),start,end,days:data.getAll('day').map(Number)};prefs.collapseOffHours=data.has('collapse');prefs.capacity={enabled:data.has('capacity'),breakMinutes:data.has('capacity')?Number(data.get('breaks')):capacity.breakMinutes,bufferMinutes:data.has('capacity')?Number(data.get('buffer')):capacity.bufferMinutes};
+  const dayStart=calendarParseClock(data.get('dayStart'));if(Number.isFinite(dayStart))prefs.calendarDayStart=dayStart;else delete prefs.calendarDayStart;for(const w of storeState.workspaces)calendarState(w).showEarlyHours=false;prefs.workingHours={enabled:data.has('shade'),start,end,days:data.getAll('day').map(Number)};prefs.collapseOffHours=data.has('collapse');prefs.capacity={enabled:data.has('capacity'),breakMinutes:data.has('capacity')?Number(data.get('breaks')):capacity.breakMinutes,bufferMinutes:data.has('capacity')?Number(data.get('buffer')):capacity.bufferMinutes};
   d.close();changed(null,false);refreshPlanningViews();
  },'Save','cal-settings-dialog');
  const form=$('form',d),fields=$('.cal-capacity-options',d);
@@ -11757,7 +11810,7 @@ function mountCalendar(paneEl){
  const sidebar=calButton('',null,'icon show-sidebar');sidebar.dataset.action='sidebar';sidebar.title='Toggle sidebar';sidebar.setAttribute('aria-label',sidebar.title);sidebar.innerHTML=icon('sidebar');$('.tabs',paneEl).prepend(sidebar);
  shell.innerHTML='<header class="cal-toolbar"><div class="cal-navigation"><button type="button" class="icon" data-cal-nav="-1" aria-label="Previous period" title="Previous period">'+icon('left')+'</button><button type="button" class="icon" data-cal-nav="1" aria-label="Next period" title="Next period">'+icon('right')+'</button></div><h1 class="cal-period"></h1><div class="cal-modes" role="group" aria-label="Calendar view"><button type="button" data-cal-mode="day">Today</button><button type="button" data-cal-mode="week">Week</button><button type="button" data-cal-mode="month">Month</button><button type="button" data-cal-mode="year">Year</button></div><button type="button" class="icon cal-planning-options" aria-label="Calendar options" title="Calendar options" aria-haspopup="menu">'+icon('settings')+'</button></header><div class="cal-body"></div>';
  const inboxButton=calButton('Inbox',()=>calendarInboxDialog(w,state.date),'cal-inbox-button');inboxButton.title='Undated tasks';$('.cal-planning-options',shell).before(inboxButton);
- paneEl.append(shell);const body=$('.cal-body',shell),dates=new Map();let cleanup=null,updateDay=null,lastMode=null,lastDate=null;[...paneViews.values()].find(view=>view.el===paneEl)?.cleanups.push(()=>cleanup?.());
+ paneEl.append(shell);const body=$('.cal-body',shell),dates=new Map();let cleanup=null,updateDay=null,lastMode=null,lastDate=null,lastVisualStart=null;[...paneViews.values()].find(view=>view.el===paneEl)?.cleanups.push(()=>cleanup?.());
  shell.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes(INBOX_DRAG)&&e.target.closest('[data-cal-date],[data-time-date],.cal-day')){e.preventDefault();e.dataTransfer.dropEffect='move';}});shell.addEventListener('drop',e=>{const id=e.dataTransfer.getData(INBOX_DRAG),target=e.target.closest('[data-cal-date],[data-time-date],.cal-day');if(id&&target){e.preventDefault();placeInboxTask(w,id,target.dataset.calDate||target.dataset.timeDate||state.date);}});
  const label=key=>calendarDate(key).toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
  function openDate(key){if(!validCalendarKey(key))return;state.mode='day';state.date=key;paint(true);}
@@ -11767,6 +11820,7 @@ function mountCalendar(paneEl){
  function paintMonth(){const grid=calElement('div','cal-month'),days=calElement('div','cal-month-grid'),first=calendarDate(state.date),month=first.getMonth();dayLabels(grid);first.setDate(1);first.setDate(1-first.getDay());for(let i=0;i<42;i++){days.append(dateButton(calendarKey(first),false,first.getMonth()!==month));first.setDate(first.getDate()+1);}grid.append(days);body.append(grid);}
  function paintYear(){const grid=calElement('div','cal-year-grid'),year=calendarDate(state.date).getFullYear();for(let month=0;month<12;month++){const first=calendarDate(year+'-'+String(month+1).padStart(2,'0')+'-01'),tile=calElement('section','cal-mini-month'),days=calElement('div','cal-mini-grid');tile.append(calButton(first.toLocaleDateString(undefined,{month:'long'}),()=>{state.mode='month';state.date=calendarKey(first);paint(true);},'cal-mini-title'));dayLabels(tile,true);for(let i=0;i<first.getDay();i++)days.append(calElement('span'));const count=new Date(year,month+1,0).getDate();for(let d=1;d<=count;d++){const day=new Date(first);day.setDate(d);days.append(dateButton(calendarKey(day),true));}tile.append(days);grid.append(tile);}body.append(grid);}
  function paint(navigate=false){
+  const visualStart=state.showEarlyHours?'full':calendarDayStart();if(lastVisualStart!==visualStart){navigate=true;lastVisualStart=visualStart;}
   const top=body.scrollTop,left=body.scrollLeft,focus=document.activeElement?.closest('[data-calendar-task-id],[data-block-id]'),id=focus?.dataset.calendarTaskId||focus?.dataset.blockId;
   cleanup?.();cleanup=null;updateDay=null;dates.clear();body.replaceChildren();body.dataset.calView=state.mode;lastMode=state.mode;lastDate=state.date;
   for(const button of $$('[data-cal-mode]',shell))button.setAttribute('aria-pressed',String(button.dataset.calMode===state.mode&&(state.mode!=='day'||state.date===calendarKey())));
@@ -11776,7 +11830,7 @@ function mountCalendar(paneEl){
   if(state.mode==='day'){updateDay=mountCalendarDay(w,state.date,body,paneEl,openDate);cleanup=updateDay.cleanup;}else if(state.mode==='week')cleanup=mountCalendarTimeline(w,state,body,paneEl);else if(state.mode==='year')paintYear();else paintMonth();
   if(!navigate){body.scrollTop=top;body.scrollLeft=left;if(id)body.querySelector('[data-calendar-task-id="'+CSS.escape(id)+'"] textarea,[data-block-id="'+CSS.escape(id)+'"]')?.focus({preventScroll:true});}else if(state.mode!=='week')body.scrollTop=0;
  }
- shell.onclick=e=>{const mode=e.target.closest('[data-cal-mode]')?.dataset.calMode,nav=e.target.closest('[data-cal-nav]')?.dataset.calNav;if(e.target.closest('.cal-planning-options'))menuAt([{text:'Calendar settings',icon:'settings',run:calendarSettingsDialog},...(['day','week'].includes(state.mode)?[{text:'Shift time blocks…',run:()=>calendarShiftDialog(w,state.date,state.mode==='week')}]:[]),{text:'Manage calendar…',icon:'calendar',run:()=>calendarManagementDialog(w)}],e.target.closest('.cal-planning-options'));else if(mode){state.mode=mode;if(mode==='day')state.date=calendarKey();paint(true);}else if(nav){state.date=moveCalendarDate(state.date,state.mode,+nav);paint(true);}};syncInboxButton(inboxButton,w);paint(true);
+ shell.onclick=e=>{const mode=e.target.closest('[data-cal-mode]')?.dataset.calMode,nav=e.target.closest('[data-cal-nav]')?.dataset.calNav;if(e.target.closest('.cal-planning-options'))menuAt([{text:'Calendar settings',icon:'settings',run:calendarSettingsDialog},...(state.mode==='week'&&calendarDayStart()>0?[{text:state.showEarlyHours?'Fold earlier hours':'Show earlier hours',run:()=>{state.showEarlyHours=!state.showEarlyHours;paint(true);}}]:[]),...(['day','week'].includes(state.mode)?[{text:'Shift time blocks…',run:()=>calendarShiftDialog(w,state.date,state.mode==='week')}]:[]),{text:'Manage calendar…',icon:'calendar',run:()=>calendarManagementDialog(w)}],e.target.closest('.cal-planning-options'));else if(mode){state.mode=mode;if(mode==='day')state.date=calendarKey();paint(true);}else if(nav){state.date=moveCalendarDate(state.date,state.mode,+nav);paint(true);}};syncInboxButton(inboxButton,w);paint(true);
  return (key)=>{syncInboxButton(inboxButton,w);const keys=Array.isArray(key)?key:key?[key]:null;if(state.mode!==lastMode||state.date!==lastDate){paint(true);return;}if(updateDay){updateDay(keys);return;}if(state.mode==='week'){if(keys&&cleanup?.update?.(keys))return;paint();return;}for(const date of keys||dates.keys()){const button=dates.get(date);if(button)updateDate(button,date);}};
 }
 
@@ -12328,7 +12382,7 @@ async function reviewImportFiles(files,w,pathOf,readImportText){
   const item={action:'keep',title,folder,existing,duplicate,separate,opaque};plan.set(f,item);rows.push([f,item]);if(existing||duplicate)conflicts.push([f,item]);if(!separate)claimed.add(key);
  }
  return new Promise(resolve=>{
-  const d=showDialog('Review import','<p class="quiet-context">'+files.length+' file'+(files.length===1?'':'s')+' · '+(conflicts.length?conflicts.length+' name conflict'+(conflicts.length===1?'':'s'):'No existing name conflicts found')+'. Nothing has been imported yet.</p><div class="quiet-import-list"></div><p class="quiet-context">Keep both is the default. Replace keeps the existing file identity and places a recoverable copy in Trash. Workspace backups open separately; encrypted files are kept separately by default.</p>',()=>{
+  const d=showDialog('Review import','<p class="quiet-context">'+files.length+' file'+(files.length===1?'':'s')+' · '+(conflicts.length?conflicts.length+' name conflict'+(conflicts.length===1?'':'s'):'No existing name conflicts found')+'. Nothing has been imported yet.</p><div class="quiet-import-list"></div><p class="quiet-context">Rename is the default for conflicts. Replace keeps the existing file identity and places a recoverable copy in Trash. Workspace backups open separately; encrypted files are kept separately by default.</p>',()=>{
    finished=true;d.close();resolve(plan);
   },'Import','quiet-action-dialog');
   let finished=false;const closed=()=>{if(d.open)return;d.removeEventListener('close',closed);if(!finished)resolve(null);};d.addEventListener('close',closed);
@@ -12338,7 +12392,7 @@ async function reviewImportFiles(files,w,pathOf,readImportText){
    label.append(calElement('small','',item.separate?(item.opaque?'Encrypted file · review after unlock':'Workspace / portable data'):item.folder||'Workspace root'));
    if(item.existing||item.duplicate)label.append(calElement('small','','Name already exists'+(item.duplicate?' in this selection':'')));
    const choice=calElement('select');choice.setAttribute('aria-label','Import action for '+f.name);
-   choice.append(new Option(item.existing||item.duplicate?'Keep both':'Import','keep'),new Option('Skip','skip'));
+   if(item.existing||item.duplicate){choice.append(new Option('Rename','rename'),new Option('Keep both','keep'));item.action='rename';}else choice.append(new Option('Import','keep'));choice.append(new Option('Skip','skip'));
    if(item.existing&&!item.duplicate)choice.append(new Option('Replace','replace'));
    choice.onchange=()=>{item.action=choice.value;item.replace=choice.value==='replace'?item.existing:null;};
    row.append(label,choice);list.append(row);
@@ -12347,6 +12401,7 @@ async function reviewImportFiles(files,w,pathOf,readImportText){
 }
 async function commitReviewedImport(w,n,file,plan){
  const item=plan.get(file),old=item?.replace;
+ if(item?.action==='rename')renameConflictFile(w,n,availableFileTitle(n.title,new Set(w.notes.filter(other=>!other.deleted&&(other.folder||null)===(n.folder||null)).map(other=>wikiKey(other.title)))));
  // Only replace the reviewed matching destination; if metadata differs, keep both.
  if(!old||!w.notes.includes(old)||old.deleted||n.title.toLowerCase()!==item.title.toLowerCase()||indexedFolderPath(n.folder,w)!==item.folder){if(w.notes.some(existing=>existing.id===n.id))n.id=uid();w.notes.push(n);return;}
  await wsLoadNote(old,w);
